@@ -1,0 +1,53 @@
+#!/bin/sh
+# shellcheck shell=sh
+#
+# Side-effect-free liveness probe for the Docker HEALTHCHECK instruction:
+# never sleeps, never retries internally, never reconnects. Docker's
+# --interval/--timeout/--retries govern retry and failure behaviour.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+# The HEALTHCHECK instruction is baked into the image and always fires; when
+# the feature is not enabled we report healthy instead of probing.
+[ "$health_check_enabled" = "true" ] || exit 0
+
+# 1) The tunnel interface must exist with its IPv4 address...
+is_vpn_connected || exit 1
+ip -4 addr show dev "$tun_if" 2>/dev/null | grep -q 'inet ' || exit 1
+
+# ...and its IPv6 address when the tunnel is required to be dual-stack
+tunnel_has_v6=false
+if ip -6 addr show dev "$tun_if" scope global 2>/dev/null | grep -q 'inet6 '; then
+    tunnel_has_v6=true
+fi
+if [ "$ipv6_mode" = "require" ] && [ "$tunnel_has_v6" != "true" ]; then
+    exit 1
+fi
+
+# 2) Confirm traffic actually flows through the tunnel: one short probe per
+#    address family, forced through tun0 so eth0 can never answer.
+probe() {
+    _family="$1"
+    oldIFS="$IFS"; IFS=',;'
+    for _url in $check_connection_url; do
+        [ -n "$_url" ] || continue
+        _code="$(curl "-$_family" --interface "$tun_if" -s --max-time 5 -o /dev/null \
+            -w '%{http_code}' -I "$_url" 2>/dev/null || printf '000')"
+        case "$_code" in
+            2*|3*) IFS="$oldIFS"; return 0 ;;
+        esac
+    done
+    IFS="$oldIFS"
+    return 1
+}
+
+probe 4 || exit 1
+
+# The IPv6 data plane only gates health when explicitly required
+if [ "$ipv6_mode" = "require" ]; then
+    probe 6 || exit 1
+fi
+
+exit 0

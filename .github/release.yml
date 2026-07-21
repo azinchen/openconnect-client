@@ -1,0 +1,38 @@
+# Categories for GitHub's auto-generated release notes ("Generate release
+# notes" button / API). PRs are sorted by label; the bot PRs from the
+# maintenance workflows carry the "dependencies" / "github-actions" labels.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+  categories:
+    - title: 💥 Breaking changes
+      labels:
+        - breaking
+    - title: ✨ Features
+      labels:
+        - enhancement
+        - feature
+    - title: 🐛 Fixes
+      labels:
+        - bug
+        - fix
+    - title: 🔒 Security
+      labels:
+        - security
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+    - title: 🔧 CI and automation
+      labels:
+        - github-actions
+        - automation
+        - ci
+    - title: 📚 Documentation
+      labels:
+        - documentation
+    - title: 🧹 Other changes
+      labels:
+        - "*"

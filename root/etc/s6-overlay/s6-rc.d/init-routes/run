@@ -1,0 +1,41 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# Install LAN return routes for NETWORK/NETWORK6 via the Docker-assigned
+# eth0 gateway so port-mapped services stay reachable from those subnets
+# once the half-default routes point everything else at the tunnel.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="INIT-ROUTES"
+
+add_routes() {
+    _family="$1"; _nets="$2"
+    [ -n "$_nets" ] || return 0
+    _gw="$(ip "-$_family" route show default dev "$wan_if" 2>/dev/null | awk '/^default/ { print $3; exit }')"
+    if [ -z "$_gw" ]; then
+        log_error "[$SCRIPT_NAME] No IPv$_family default gateway on $wan_if; cannot add return routes for: $_nets"
+        return 0
+    fi
+    oldIFS="$IFS"; IFS=',;'
+    for _net in $_nets; do
+        [ -n "$_net" ] || continue
+        if ip "-$_family" route replace "$_net" via "$_gw" dev "$wan_if" 2>/dev/null; then
+            log "[$SCRIPT_NAME] Return route: $_net via $_gw dev $wan_if"
+        else
+            log_error "[$SCRIPT_NAME] Failed to add return route for $_net"
+        fi
+    done
+    IFS="$oldIFS"
+}
+
+add_routes 4 "$network"
+if ipv6_available; then
+    add_routes 6 "$network6"
+elif [ -n "$network6" ]; then
+    log "[$SCRIPT_NAME] Skipping NETWORK6 return routes (no usable IPv6)"
+fi
+
+log "[$SCRIPT_NAME] Route initialization completed"

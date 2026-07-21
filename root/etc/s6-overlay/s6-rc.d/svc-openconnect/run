@@ -1,0 +1,228 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# Resolve the active server URL, atomically update the firewall endpoint
+# sets, then run openconnect with the custom vpnc-script. Every (re)start
+# re-resolves, closing the classic race where DNS re-resolution after
+# firewall lockdown fails. Backoff between restarts lives in ./finish.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="SVC-OPENCONNECT"
+
+# ---- Recover from an unclean shutdown --------------------------------------
+# If openconnect died without a clean disconnect, /etc/resolv.conf may still
+# point at tunnel resolvers that are unreachable with the tunnel down.
+if ! is_vpn_connected && [ -f "$resolv_backup_file" ]; then
+    cat "$resolv_backup_file" > /etc/resolv.conf
+    /usr/local/bin/firewall bootstrap-dns
+    log "[$SCRIPT_NAME] Restored bootstrap resolv.conf after unclean shutdown"
+fi
+rm -f "$connect_state_file"
+
+# ---- Pick the active URL (ordered failover) --------------------------------
+total="$(wc -l < "$urls_file")"
+idx="$(cat "$url_index_file" 2>/dev/null || echo 0)"
+failures="$(cat "$failure_count_file" 2>/dev/null || echo 0)"
+
+if [ "$failures" -ge "$url_max_failures" ] && [ "$total" -gt 1 ]; then
+    idx=$(( (idx + 1) % total ))
+    echo "$idx" > "$url_index_file"
+    echo 0 > "$failure_count_file"
+    log "[$SCRIPT_NAME] $failures consecutive failures; advancing to server $((idx + 1))/$total"
+fi
+
+line="$(sed -n "$((idx + 1))p" "$urls_file")"
+host="$(printf '%s' "$line" | cut -d' ' -f1)"
+port="$(printf '%s' "$line" | cut -d' ' -f2)"
+full_url="$(printf '%s' "$line" | cut -d' ' -f3-)"
+
+log "[$SCRIPT_NAME] Connecting to $(redact_url "$full_url") (server $((idx + 1))/$total)"
+
+# ---- Resolve the endpoint --------------------------------------------------
+resolve() {
+    case "$1" in
+        A)    _pat='^([0-9]{1,3}\.){3}[0-9]{1,3}$' ;;
+        AAAA) _pat='^[0-9a-fA-F:]+$' ;;
+    esac
+    # /etc/hosts entries (--add-host, LAN setups without DNS) take precedence
+    _static="$(awk -v h="$2" '$1 !~ /^#/ { for (i = 2; i <= NF; i++) if ($i == h) print $1 }' /etc/hosts 2>/dev/null | grep -E "$_pat" || true)"
+    if [ -n "$_static" ]; then
+        printf '%s\n' "$_static"
+        return 0
+    fi
+    # dig prints CNAME chain targets too; keep only address-shaped answers
+    dig +short +time=3 +tries=2 "$1" "$2" 2>/dev/null | grep -E "$_pat" || true
+}
+
+v4_ips=""
+v6_ips=""
+if is_ipv4_literal "$host"; then
+    v4_ips="$host"
+elif is_ipv6_literal "$host"; then
+    v6_ips="$host"
+else
+    case "$connect_family" in
+        ipv4) v4_ips="$(resolve A "$host")" ;;
+        ipv6) v6_ips="$(resolve AAAA "$host")" ;;
+        auto)
+            v4_ips="$(resolve A "$host")"
+            if ipv6_available; then
+                v6_ips="$(resolve AAAA "$host")"
+            fi
+            ;;
+    esac
+fi
+
+if [ -z "$v4_ips" ] && [ -z "$v6_ips" ]; then
+    log_error "[$SCRIPT_NAME] Could not resolve '$host' (CONNECT_FAMILY=$connect_family); will retry"
+    exit 1
+fi
+
+# Poor-man's Happy Eyeballs at connect granularity: prefer IPv6 only when
+# eth0 actually has a global IPv6 route; fall back to the other family on
+# the next restart (candidate rotation via the failure counter).
+if [ "$connect_family" = "auto" ] && has_global_ipv6 && [ -n "$v6_ips" ]; then
+    candidates="$(printf '%s\n%s\n' "$v6_ips" "$v4_ips" | sed '/^$/d')"
+else
+    candidates="$(printf '%s\n%s\n' "$v4_ips" "$v6_ips" | sed '/^$/d')"
+fi
+candidate_count="$(printf '%s\n' "$candidates" | wc -l)"
+connect_ip="$(printf '%s\n' "$candidates" | sed -n "$(( (failures % candidate_count) + 1 ))p")"
+
+# ---- Punch the firewall for ALL resolved addresses (atomic set swap) -------
+v4_elems="$(printf '%s\n' $v4_ips | sed '/^$/d; s/$/@'"$port"'/' | paste -sd' ' -)"
+v6_elems="$(printf '%s\n' $v6_ips | sed '/^$/d; s/$/@'"$port"'/' | paste -sd' ' -)"
+/usr/local/bin/firewall set-endpoints "$v4_elems" "$v6_elems"
+
+log "[$SCRIPT_NAME] Resolved $host -> [$(printf '%s ' $v4_ips $v6_ips | sed 's/ $//')]; connecting via $connect_ip:$port"
+
+# ---- Build the openconnect command -----------------------------------------
+# --reconnect-timeout: openconnect's internal reconnect handles short blips;
+# after 60s we prefer a full restart (fresh auth, DNS re-resolution, URL
+# failover) over openconnect retrying a dead session for its 300s default.
+# A camouflaged server also answers the internal reconnect's cookie-only
+# CONNECT with 405 after a restart, so a fresh auth is the faster path.
+set -- --protocol "$protocol" \
+    --interface "$tun_if" \
+    --script /usr/local/bin/vpnc-script \
+    --non-inter \
+    --reconnect-timeout 60
+
+# --resolve semantics: keep SNI/hostname for TLS, connect to the pinned IP
+if ! is_ipv4_literal "$host" && ! is_ipv6_literal "$host"; then
+    set -- "$@" --resolve "$host:$connect_ip"
+fi
+
+[ "$dtls" = "off" ] && set -- "$@" --no-dtls
+[ "$ipv6_mode" = "off" ] && set -- "$@" --disable-ipv6
+
+if [ -n "$ca_file" ]; then
+    set -- "$@" --cafile "$ca_file"
+elif [ -n "$servercert" ]; then
+    set -- "$@" --servercert "$servercert"
+elif [ "$insecure" = "true" ]; then
+    # openconnect has no blanket "skip verification" switch; fetch the
+    # server's SPKI pin over an unverified TLS handshake and trust it for
+    # this connection. Loudly unsafe: anyone on-path can impersonate the
+    # server at this point.
+    log_error "[$SCRIPT_NAME] WARNING: INSECURE=true - accepting whatever certificate the server presents"
+    pin="$(printf '' | openssl s_client -connect "$(echo "$connect_ip" | grep -q ':' && echo "[$connect_ip]" || echo "$connect_ip"):$port" -servername "$host" 2>/dev/null \
+        | openssl x509 -pubkey -noout 2>/dev/null \
+        | openssl pkey -pubin -outform der 2>/dev/null \
+        | openssl dgst -sha256 -binary 2>/dev/null | base64)"
+    if [ -z "$pin" ]; then
+        log_error "[$SCRIPT_NAME] Could not obtain the server certificate for INSECURE mode; will retry"
+        exit 1
+    fi
+    set -- "$@" --servercert "pin-sha256:$pin"
+fi
+
+if [ -n "$cert_file" ]; then
+    set -- "$@" -c "$cert_file"
+    case "$cert_file" in
+        *.p12|*.pfx) ;;
+        *) [ -n "$key_file" ] && set -- "$@" -k "$key_file" ;;
+    esac
+    [ -n "$cert_pass" ] && set -- "$@" --key-password "$cert_pass"
+fi
+
+password="$(get_password)"
+if [ -n "$auth_user" ] && [ -n "$password" ]; then
+    set -- "$@" --user "$auth_user" --passwd-on-stdin
+fi
+
+# OPENCONNECT_OPTS passthrough (word splitting intended)
+# shellcheck disable=SC2086
+set -- "$@" $openconnect_opts
+
+# openconnect logs the full URL (secret included), so its output is piped
+# through a literal-substring redactor before reaching the container log
+secret=""
+case "$full_url" in
+    *\?*) secret="${full_url#*\?}" ;;
+esac
+oc_pipe="$state_dir/openconnect.out"
+rm -f "$oc_pipe"
+mkfifo "$oc_pipe"
+if [ -n "$secret" ]; then
+    OC_SECRET="$secret" awk '{
+        s = ENVIRON["OC_SECRET"]
+        while (s != "" && (i = index($0, s)) > 0)
+            $0 = substr($0, 1, i - 1) "<redacted>" substr($0, i + length(s))
+        print
+        fflush()
+    }' < "$oc_pipe" &
+else
+    cat "$oc_pipe" &
+fi
+
+log "[$SCRIPT_NAME] Launching openconnect"
+if [ -n "$auth_user" ] && [ -n "$password" ]; then
+    printf '%s\n' "$password" | openconnect "$@" "$full_url" > "$oc_pipe" 2>&1 &
+else
+    openconnect "$@" "$full_url" > "$oc_pipe" 2>&1 &
+fi
+oc_pid=$!
+
+# Forward TERM/INT so openconnect can run its clean disconnect (vpnc-script
+# restores resolv.conf) instead of being orphaned when s6 signals this shell
+trap 'kill "$oc_pid" 2>/dev/null' TERM INT
+
+# ---- Post-connect checks ---------------------------------------------------
+counter=0
+while [ ! -f "$connect_state_file" ] && [ "$counter" -lt 30 ] && kill -0 "$oc_pid" 2>/dev/null; do
+    sleep 2
+    counter=$((counter + 1))
+done
+
+if [ -f "$connect_state_file" ]; then
+    tun_ip6="$(sed -n 's/^ip6=//p' "$connect_state_file")"
+    log "[$SCRIPT_NAME] VPN connection established (ip4=$(sed -n 's/^ip4=//p' "$connect_state_file") ip6=${tun_ip6:-none})"
+
+    if [ "$ipv6_mode" = "require" ] && [ -z "$tun_ip6" ]; then
+        log_error "[$SCRIPT_NAME] IPV6_MODE=require but the server pushed no IPv6 address; reconnecting"
+        kill "$oc_pid" 2>/dev/null || true
+    fi
+
+    if [ "$network_diagnostic_enabled" = "true" ]; then
+        log "[$SCRIPT_NAME] --- network diagnostic ---"
+        ip addr show
+        ip route show
+        ip -6 route show 2>/dev/null || true
+        nft list table inet vpn
+        log "[$SCRIPT_NAME] --- end diagnostic ---"
+    fi
+elif kill -0 "$oc_pid" 2>/dev/null; then
+    log_error "[$SCRIPT_NAME] VPN connection timed out (still authenticating?)"
+fi
+
+rc=0
+wait "$oc_pid" || rc=$?
+if [ "$rc" -gt 128 ]; then
+    # wait was interrupted by the signal trap; reap openconnect for real
+    wait "$oc_pid" 2>/dev/null || true
+fi
+exit "$rc"

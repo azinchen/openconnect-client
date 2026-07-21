@@ -1,0 +1,157 @@
+#!/bin/sh
+# shellcheck shell=sh
+#
+# Minimal vpnc-script for containers. The stock script assumes
+# resolvconf/systemd-ish hosts, but Docker bind-mounts /etc/resolv.conf (it
+# can only be rewritten in place, never replaced). Everything here is static
+# from the environment openconnect provides -- there is no RA/SLAAC on tun.
+#
+# Invoked by openconnect with $reason set to pre-init / connect / reconnect /
+# attempt-reconnect / disconnect and the tunnel parameters in the environment.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+TUNDEV="${TUNDEV:-$tun_if}"
+
+configure_tun() {
+    # MTU: explicit env override wins, then the server-provided value
+    link_mtu="${mtu:-${INTERNAL_IP4_MTU:-1406}}"
+    ip link set dev "$TUNDEV" up mtu "$link_mtu"
+
+    if [ -n "${INTERNAL_IP4_ADDRESS:-}" ]; then
+        ip -4 addr add "$INTERNAL_IP4_ADDRESS/32" dev "$TUNDEV" 2>/dev/null || true
+    fi
+
+    tun_ip6=""
+    if [ "$ipv6_mode" != "off" ] && [ -n "${INTERNAL_IP6_ADDRESS:-}" ]; then
+        # ocserv delivers either INTERNAL_IP6_NETMASK=addr/prefix or a bare
+        # prefix length alongside INTERNAL_IP6_ADDRESS
+        case "${INTERNAL_IP6_NETMASK:-}" in
+            */*) tun_ip6="$INTERNAL_IP6_NETMASK" ;;
+            "")  tun_ip6="$INTERNAL_IP6_ADDRESS/128" ;;
+            *)   tun_ip6="$INTERNAL_IP6_ADDRESS/$INTERNAL_IP6_NETMASK" ;;
+        esac
+        ip -6 addr add "$tun_ip6" dev "$TUNDEV" 2>/dev/null || true
+    fi
+}
+
+configure_routes() {
+    if [ "$split_tunnel" = "true" ] && [ "${CISCO_SPLIT_INC:-0}" -gt 0 ]; then
+        i=0
+        while [ "$i" -lt "${CISCO_SPLIT_INC:-0}" ]; do
+            eval net="\${CISCO_SPLIT_INC_${i}_ADDR:-}"
+            eval masklen="\${CISCO_SPLIT_INC_${i}_MASKLEN:-}"
+            if [ -n "$net" ]; then
+                ip -4 route replace "$net/${masklen:-32}" dev "$TUNDEV"
+            fi
+            i=$((i + 1))
+        done
+        i=0
+        while [ "$i" -lt "${CISCO_IPV6_SPLIT_INC:-0}" ]; do
+            eval net="\${CISCO_IPV6_SPLIT_INC_${i}_ADDR:-}"
+            eval masklen="\${CISCO_IPV6_SPLIT_INC_${i}_MASKLEN:-}"
+            if [ -n "$net" ]; then
+                ip -6 route replace "$net/${masklen:-128}" dev "$TUNDEV"
+            fi
+            i=$((i + 1))
+        done
+        routes="split ($((${CISCO_SPLIT_INC:-0} + ${CISCO_IPV6_SPLIT_INC:-0})) prefixes)"
+    else
+        # Half-default routes beat the existing defaults without touching
+        # them -- simpler rollback than replacing `default`: everything dies
+        # with the tun interface.
+        ip -4 route replace 0.0.0.0/1 dev "$TUNDEV"
+        ip -4 route replace 128.0.0.0/1 dev "$TUNDEV"
+        if [ -n "$tun_ip6" ]; then
+            ip -6 route replace ::/1 dev "$TUNDEV"
+            ip -6 route replace 8000::/1 dev "$TUNDEV"
+        fi
+        routes="full-tunnel"
+    fi
+}
+
+configure_dns() {
+    # Keep the original (Docker-provided) resolv.conf around for disconnect
+    [ -f "$resolv_backup_file" ] || cp /etc/resolv.conf "$resolv_backup_file"
+
+    if [ -n "$dns_override" ]; then
+        dns_servers="$(printf '%s\n' "$dns_override" | tr ',;' '  ')"
+    else
+        dns_servers="${INTERNAL_IP4_DNS:-}"
+        if [ "$ipv6_mode" != "off" ] && [ -n "${INTERNAL_IP6_DNS:-}" ]; then
+            dns_servers="$dns_servers $INTERNAL_IP6_DNS"
+        fi
+    fi
+
+    dns4=""
+    dns6=""
+    if [ -n "$(printf '%s' "$dns_servers" | tr -d ' ')" ]; then
+        # In-place rewrite (`>`, not mv): the file is a Docker bind mount
+        {
+            if [ -n "${CISCO_DEF_DOMAIN:-}" ]; then
+                printf 'search %s\n' "$CISCO_DEF_DOMAIN"
+            fi
+            for s in $dns_servers; do
+                printf 'nameserver %s\n' "$s"
+            done
+        } > /etc/resolv.conf
+
+        for s in $dns_servers; do
+            case "$s" in
+                *:*) dns6="$dns6 $s" ;;
+                *)   dns4="$dns4 $s" ;;
+            esac
+        done
+        dns4="${dns4# }"
+        dns6="${dns6# }"
+    fi
+
+    # Re-point the gateway DNS interception (GATEWAY_DNS=redirect) at the
+    # resolvers of this session; no-op in other modes
+    /usr/local/bin/gateway dns-update "$dns4" "$dns6"
+}
+
+case "${reason:-}" in
+    pre-init)
+        if [ ! -e /dev/net/tun ]; then
+            mkdir -p /dev/net
+            mknod /dev/net/tun c 10 200
+        fi
+        ;;
+
+    connect|reconnect)
+        mkdir -p "$state_dir"
+        tun_ip6=""
+        configure_tun
+        configure_routes
+        configure_dns
+        /usr/local/bin/firewall post-connect
+
+        printf 'ip4=%s\nip6=%s\n' "${INTERNAL_IP4_ADDRESS:-}" "$tun_ip6" > "$connect_state_file"
+        echo 0 > "$failure_count_file"
+        log "[vpnc] $reason dev=$TUNDEV mtu=$link_mtu ip4=${INTERNAL_IP4_ADDRESS:-none} ip6=${tun_ip6:-none} routes=$routes dns=${dns_servers:-unchanged}"
+        ;;
+
+    attempt-reconnect)
+        ;;
+
+    disconnect)
+        # Routes and addresses vanish with the tun interface; the firewall is
+        # never touched (fail-closed). Restore DNS so the next connect can
+        # resolve the server again via the bootstrap hole.
+        if [ -f "$resolv_backup_file" ]; then
+            cat "$resolv_backup_file" > /etc/resolv.conf
+            /usr/local/bin/firewall bootstrap-dns || true
+        fi
+        rm -f "$connect_state_file"
+        log "[vpnc] disconnect dev=$TUNDEV"
+        ;;
+
+    *)
+        log "[vpnc] ignoring reason='${reason:-}'"
+        ;;
+esac
+
+exit 0

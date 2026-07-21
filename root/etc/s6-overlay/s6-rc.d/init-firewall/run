@@ -1,0 +1,25 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# Install the fail-closed kill switch. This oneshot MUST complete before
+# svc-openconnect is allowed to start (enforced by the s6-rc dependency
+# graph); failure aborts container start rather than running unprotected.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="INIT-FIREWALL"
+
+log "[$SCRIPT_NAME] Installing kill-switch firewall (nftables, dual family)"
+
+/usr/local/bin/firewall install
+
+/usr/local/bin/gateway setup
+
+if [ "$network_diagnostic_enabled" = "true" ]; then
+    log "[$SCRIPT_NAME] Ruleset dump (NETWORK_DIAGNOSTIC_ENABLED):"
+    nft list table inet vpn
+fi
+
+log "[$SCRIPT_NAME] Firewall initialization completed"

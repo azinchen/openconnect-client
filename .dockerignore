@@ -1,0 +1,15 @@
+# The image is built from the Dockerfile + root/ only. Keep everything else
+# out of the build context.
+.git
+.github
+.gitignore
+.dockerignore
+.claude
+scripts
+docker-compose.yml
+docker-compose.gateway.yml
+LICENSE
+*.md
+
+# Documentation (published to the GitHub wiki by CI)
+wiki

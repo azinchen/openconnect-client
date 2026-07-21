@@ -1,0 +1,182 @@
+#!/bin/sh
+# shellcheck shell=sh
+#
+# Kill-switch firewall management: one dual-family nftables table (inet vpn)
+# with named sets that are updated atomically at runtime. Installed by
+# init-firewall BEFORE openconnect is allowed to start and never removed on
+# disconnect -> fail-closed by construction.
+#
+# Usage:
+#   firewall install                          install table, chains, sets
+#   firewall bootstrap-dns                    (re)allow DNS to the resolvers
+#                                                currently in /etc/resolv.conf
+#   firewall set-endpoints "<v4>" "<v6>"      atomic endpoint set swap;
+#                                                lists are space-separated
+#                                                ip@port tokens
+#   firewall post-connect                     close the bootstrap DNS hole
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="FIREWALL"
+
+# Turn "a;b,c" lists into newline-separated entries
+split_list() {
+    printf '%s\n' "${1:-}" | tr ',;' '\n\n' | sed '/^[[:space:]]*$/d'
+}
+
+# Build "{ elem, elem }" nft literal from newline-separated input, empty on no input
+nft_set_literal() {
+    _elems="$(sed '/^$/d' | paste -sd, - | sed 's/,/, /g')"
+    [ -n "$_elems" ] && printf '{ %s }' "$_elems"
+}
+
+cmd_install() {
+    if ! nft list tables >/dev/null 2>&1; then
+        log_error "[$SCRIPT_NAME] nftables is not usable on this host kernel; the kill switch cannot be installed"
+        log_error "[$SCRIPT_NAME] A kernel with nf_tables support (3.13+, any modern distribution) is required"
+        return 1
+    fi
+
+    # LAN return networks (NETWORK / NETWORK6) as set elements
+    lan4_elems="$(split_list "$network")"
+    lan6_elems="$(split_list "$network6")"
+
+    # DTLS shares the endpoint set; only the UDP rules are conditional
+    dtls_rules=""
+    if [ "$dtls" != "off" ]; then
+        dtls_rules="ip  daddr . udp dport @endpoint4 accept
+        ip6 daddr . udp dport @endpoint6 accept"
+    fi
+
+    lan4_out=""; lan4_in=""
+    if [ -n "$lan4_elems" ]; then
+        lan4_out="oifname \"$wan_if\" ip daddr @lan4 accept"
+        lan4_in="iifname \"$wan_if\" ip saddr @lan4 accept"
+    fi
+    lan6_out=""; lan6_in=""
+    if [ -n "$lan6_elems" ]; then
+        lan6_out="oifname \"$wan_if\" ip6 daddr @lan6 accept"
+        lan6_in="iifname \"$wan_if\" ip6 saddr @lan6 accept"
+    fi
+
+    # The tun0 accept is installed up front: the interface does not exist
+    # until openconnect connects, so the rule cannot match early, and traffic
+    # leaving via tun0 is by definition inside the tunnel.
+    #
+    # ICMPv6 neighbor discovery is stateless (not covered by conntrack) and
+    # required for any IPv6 connectivity to the server via eth0.
+    #
+    # Endpoint sets concatenate address and port so each entry of a URL
+    # failover list keeps its own port; svc-openconnect swaps the elements
+    # atomically on every (re)connect after re-resolving.
+    nft delete table inet vpn 2>/dev/null || true
+    nft -f - <<EOF
+table inet vpn {
+    set endpoint4 { type ipv4_addr . inet_service; }
+    set endpoint6 { type ipv6_addr . inet_service; }
+    set lan4 { type ipv4_addr; flags interval; }
+    set lan6 { type ipv6_addr; flags interval; }
+    set bootstrap_dns4 { type ipv4_addr; }
+    set bootstrap_dns6 { type ipv6_addr; }
+    set gw_clients4 { type ipv4_addr; flags interval; }
+    set gw_clients6 { type ipv6_addr; flags interval; }
+
+    chain output {
+        type filter hook output priority 0; policy drop;
+        oifname "lo" accept
+        ct state established,related accept
+        oifname "$tun_if" accept
+        meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit } accept
+        ip  daddr . tcp dport @endpoint4 accept
+        ip6 daddr . tcp dport @endpoint6 accept
+        $dtls_rules
+        $lan4_out
+        $lan6_out
+        oifname "$wan_if" ip  daddr @bootstrap_dns4 udp dport 53 accept
+        oifname "$wan_if" ip  daddr @bootstrap_dns4 tcp dport 53 accept
+        oifname "$wan_if" ip6 daddr @bootstrap_dns6 udp dport 53 accept
+        oifname "$wan_if" ip6 daddr @bootstrap_dns6 tcp dport 53 accept
+    }
+
+    chain input {
+        type filter hook input priority 0; policy drop;
+        iifname "lo" accept
+        ct state established,related accept
+        meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-advert } accept
+        $lan4_in
+        $lan6_in
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+}
+EOF
+
+    if [ -n "$lan4_elems" ]; then
+        nft add element inet vpn lan4 "$(printf '%s\n' "$lan4_elems" | nft_set_literal)"
+    fi
+    if [ -n "$lan6_elems" ]; then
+        nft add element inet vpn lan6 "$(printf '%s\n' "$lan6_elems" | nft_set_literal)"
+    fi
+
+    cmd_bootstrap_dns
+
+    log "[$SCRIPT_NAME] Kill switch installed (table inet vpn, policy drop for IPv4 and IPv6)"
+}
+
+# Allow DNS to the resolvers currently listed in /etc/resolv.conf so the
+# server hostname can be resolved before the first connect (and again after
+# a disconnect restored the original resolv.conf). Closed by post-connect.
+cmd_bootstrap_dns() {
+    dns4="$(awk '/^nameserver/ { print $2 }' /etc/resolv.conf 2>/dev/null | grep -v ':' || true)"
+    dns6="$(awk '/^nameserver/ { print $2 }' /etc/resolv.conf 2>/dev/null | grep ':' | grep -v '%' || true)"
+
+    dns4_literal="$(printf '%s\n' "$dns4" | nft_set_literal || true)"
+    dns6_literal="$(printf '%s\n' "$dns6" | nft_set_literal || true)"
+
+    nft -f - <<EOF
+flush set inet vpn bootstrap_dns4
+flush set inet vpn bootstrap_dns6
+${dns4_literal:+add element inet vpn bootstrap_dns4 $dns4_literal}
+${dns6_literal:+add element inet vpn bootstrap_dns6 $dns6_literal}
+EOF
+    log "[$SCRIPT_NAME] Bootstrap DNS resolvers allowed:$(printf ' %s' $dns4 $dns6)"
+}
+
+# Atomic swap of the endpoint pinholes; each argument is a space-separated
+# list of ip@port tokens (v4 first, then v6)
+cmd_set_endpoints() {
+    v4_literal="$(printf '%s\n' ${1:-} | sed '/^$/d; s/@/ . /' | nft_set_literal || true)"
+    v6_literal="$(printf '%s\n' ${2:-} | sed '/^$/d; s/@/ . /' | nft_set_literal || true)"
+
+    nft -f - <<EOF
+flush set inet vpn endpoint4
+flush set inet vpn endpoint6
+${v4_literal:+add element inet vpn endpoint4 $v4_literal}
+${v6_literal:+add element inet vpn endpoint6 $v6_literal}
+EOF
+    log "[$SCRIPT_NAME] Endpoint pinholes set: ${1:-none} ${2:-}"
+}
+
+# After connect DNS flows through the tunnel; close the eth0 bootstrap hole
+cmd_post_connect() {
+    nft -f - <<EOF
+flush set inet vpn bootstrap_dns4
+flush set inet vpn bootstrap_dns6
+EOF
+    log "[$SCRIPT_NAME] Bootstrap DNS hole closed; DNS restricted to the tunnel"
+}
+
+case "${1:-}" in
+    install)        cmd_install ;;
+    bootstrap-dns)  cmd_bootstrap_dns ;;
+    set-endpoints)  shift; cmd_set_endpoints "${1:-}" "${2:-}" ;;
+    post-connect)   cmd_post_connect ;;
+    *)
+        log_error "[$SCRIPT_NAME] Unknown command: ${1:-<none>}"
+        exit 1
+        ;;
+esac

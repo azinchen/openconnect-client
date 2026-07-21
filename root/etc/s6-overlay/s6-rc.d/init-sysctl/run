@@ -1,0 +1,79 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# Verify (and where possible set) the sysctls the container depends on.
+# /proc/sys is often read-only in-container, so required-but-missing values
+# produce a hard error naming the exact `sysctls:` block to add.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="INIT-SYSCTL"
+
+# Try to set a sysctl; succeed if it already has the wanted value
+try_sysctl() {
+    _path="$1"; _want="$2"
+    [ -f "$_path" ] || return 1
+    [ "$(cat "$_path")" = "$_want" ] && return 0
+    echo "$_want" > "$_path" 2>/dev/null && return 0
+    return 1
+}
+
+# ---- IPv6 availability -----------------------------------------------------
+has_ipv6=0
+if [ -e /proc/net/if_inet6 ]; then
+    if try_sysctl /proc/sys/net/ipv6/conf/all/disable_ipv6 0; then
+        has_ipv6=1
+        log "[$SCRIPT_NAME] IPv6 is available"
+    else
+        log "[$SCRIPT_NAME] IPv6 is disabled and cannot be enabled; add to your compose file:"
+        log "[$SCRIPT_NAME]     sysctls:"
+        log "[$SCRIPT_NAME]       - net.ipv6.conf.all.disable_ipv6=0"
+    fi
+else
+    log "[$SCRIPT_NAME] Kernel has no IPv6 support; IPv6 rules will be skipped"
+fi
+echo "$has_ipv6" > "$has_ipv6_file"
+
+if [ "$has_ipv6" = "0" ]; then
+    if [ "$ipv6_mode" = "require" ]; then
+        log_error "[$SCRIPT_NAME] ERROR: IPV6_MODE=require but the runtime has no usable IPv6"
+        exit 1
+    fi
+    if [ "$connect_family" = "ipv6" ]; then
+        log_error "[$SCRIPT_NAME] ERROR: CONNECT_FAMILY=ipv6 but the runtime has no usable IPv6"
+        exit 1
+    fi
+    log "[$SCRIPT_NAME] Degrading to IPv4 only"
+fi
+
+# ---- Forwarding (gateway mode) ---------------------------------------------
+if [ "$gateway_mode" = "true" ]; then
+    sysctl_help() {
+        log_error "[$SCRIPT_NAME] ERROR: $1 but /proc/sys is not writable."
+        log_error "[$SCRIPT_NAME] Add this to the vpn service in your compose file:"
+        log_error "[$SCRIPT_NAME]     sysctls:"
+        log_error "[$SCRIPT_NAME]       - net.ipv4.ip_forward=1"
+        log_error "[$SCRIPT_NAME]       - net.ipv6.conf.all.forwarding=1"
+        log_error "[$SCRIPT_NAME]       - net.ipv6.conf.all.disable_ipv6=0"
+    }
+
+    if try_sysctl /proc/sys/net/ipv4/ip_forward 1; then
+        log "[$SCRIPT_NAME] IPv4 forwarding enabled"
+    else
+        sysctl_help "GATEWAY_MODE=true needs net.ipv4.ip_forward=1"
+        exit 1
+    fi
+
+    if [ "$has_ipv6" = "1" ] && [ "$ipv6_mode" != "off" ]; then
+        if try_sysctl /proc/sys/net/ipv6/conf/all/forwarding 1; then
+            log "[$SCRIPT_NAME] IPv6 forwarding enabled"
+        else
+            sysctl_help "GATEWAY_MODE=true needs net.ipv6.conf.all.forwarding=1"
+            exit 1
+        fi
+    fi
+fi
+
+log "[$SCRIPT_NAME] Sysctl checks completed"

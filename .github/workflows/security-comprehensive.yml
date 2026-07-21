@@ -1,0 +1,94 @@
+name: "🔒 Comprehensive Security Analysis"
+
+permissions:
+  contents: read
+  security-events: write
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 4 * * 1'  # Weekly on Monday at 4 AM UTC
+  workflow_dispatch:
+
+jobs:
+  comprehensive-security:
+    name: 🔒 Complete Security Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          # Full history so Super-Linter can diff against the base branch on PRs
+          fetch-depth: 0
+
+      # ============================================================================
+      # SUPER-LINTER CODE QUALITY
+      # ============================================================================
+      - name: Run Super-Linter
+        id: super-linter
+        uses: super-linter/super-linter@v8.7.0
+        continue-on-error: true
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # Lint only changed files on push/PR; scan the whole tree on scheduled/manual runs
+          VALIDATE_ALL_CODEBASE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_BASH: true
+          VALIDATE_SHELL_SHFMT: true
+          VALIDATE_MARKDOWN: true
+          VALIDATE_JSON: true
+          VALIDATE_YAML: true
+
+      # ============================================================================
+      # TRIVY VULNERABILITY SCANNING
+      # ============================================================================
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4.37.0
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-filesystem-security'
+
+      - name: Run Trivy on Dockerfile
+        id: trivy-config
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: 'config'
+          scan-ref: 'Dockerfile'
+          format: 'table'
+
+      # ============================================================================
+      # WORKFLOW SUMMARY
+      # ============================================================================
+      - name: Create workflow summary
+        if: always()
+        run: |
+          {
+            echo "## 🔒 Comprehensive Security Analysis Summary"
+            echo ""
+            echo "| Component | Status | Details |"
+            echo "|-----------|--------|---------|"
+            echo "| 🧹 Super-Linter | ${{ steps.super-linter.outcome }} | Bash, Dockerfile, Markdown, JSON, YAML |"
+            echo "| 🔧 Trivy Dockerfile config | ${{ steps.trivy-config.outcome }} | Misconfiguration scan |"
+            if [ -f trivy-results.sarif ]; then
+              echo "| 🛡️ Trivy filesystem | ✅ uploaded | See Security tab |"
+            else
+              echo "| 🛡️ Trivy filesystem | ❌ no results | See logs |"
+            fi
+            echo ""
+            echo "Findings are uploaded to the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning)."
+          } >> "$GITHUB_STEP_SUMMARY"

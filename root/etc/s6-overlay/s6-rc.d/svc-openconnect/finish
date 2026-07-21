@@ -1,0 +1,39 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# s6 restarts a longrun immediately by design, so the reconnect delay lives
+# here: exponential backoff from RECONNECT_DELAY, capped. The firewall is
+# deliberately left untouched -- the kill switch stays fail-closed while the
+# tunnel is down. timeout-finish must exceed the backoff cap.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="SVC-OPENCONNECT"
+
+# s6 passes the exit code (or 256 + signal) as $1
+exit_code="${1:-0}"
+
+# Service is wanted down (restart or container shutdown); don't delay it.
+# finish runs with cwd = the live service directory.
+if ! s6-svstat -o wantedup . 2>/dev/null | grep -q true; then
+    exit 0
+fi
+
+failures="$(cat "$failure_count_file" 2>/dev/null || echo 0)"
+failures=$((failures + 1))
+echo "$failures" > "$failure_count_file"
+
+# delay = RECONNECT_DELAY * 2^(failures-1), capped at reconnect_delay_max
+delay="$reconnect_delay"
+i=1
+while [ "$i" -lt "$failures" ] && [ "$delay" -lt "$reconnect_delay_max" ]; do
+    delay=$((delay * 2))
+    i=$((i + 1))
+done
+[ "$delay" -gt "$reconnect_delay_max" ] && delay="$reconnect_delay_max"
+
+log "[$SCRIPT_NAME] openconnect exited (code $exit_code, failure $failures); reconnecting in ${delay}s"
+sleep "$delay"
+exit 0

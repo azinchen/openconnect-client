@@ -1,0 +1,115 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+#
+# Parse and validate the environment; parse the URL failover list. Any
+# configuration error fails this oneshot, which aborts container start
+# (S6_BEHAVIOUR_IF_STAGE2_FAILS=2) with a clear log line.
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="INIT-ENV"
+
+fatal() {
+    log_error "[$SCRIPT_NAME] ERROR: $1"
+    exit 1
+}
+
+# World-readable dir; anything secret-bearing inside (the urls file) is
+# chmod 0600 individually
+mkdir -p "$state_dir"
+chmod 0755 "$state_dir"
+
+log "[$SCRIPT_NAME] openconnect-client starting"
+log "[$SCRIPT_NAME] $(openconnect --version | head -n1)"
+
+# ---- URL list --------------------------------------------------------------
+[ -n "$url_list" ] || fatal "URL is required (https://host[:port][/][?camouflage_secret]; ';'-separated list for failover)"
+
+: > "$urls_file"
+chmod 0600 "$urls_file"
+count=0
+oldIFS="$IFS"; IFS=';'
+for entry in $url_list; do
+    IFS="$oldIFS"
+    entry="$(printf '%s' "$entry" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    [ -n "$entry" ] || continue
+    parse_url "$entry" || fatal "Cannot parse URL entry '$(redact_url "$entry")' (only https:// is supported)"
+    printf '%s %s %s\n' "$parsed_host" "$parsed_port" "$parsed_url" >> "$urls_file"
+    count=$((count + 1))
+    log "[$SCRIPT_NAME] Server $count: $(redact_url "$parsed_url") (host=$parsed_host port=$parsed_port)"
+    IFS=';'
+done
+IFS="$oldIFS"
+[ "$count" -gt 0 ] || fatal "URL contains no usable entries"
+
+echo 0 > "$url_index_file"
+echo 0 > "$failure_count_file"
+
+# ---- Enum validation -------------------------------------------------------
+case "$connect_family" in
+    auto|ipv4|ipv6) ;;
+    *) fatal "CONNECT_FAMILY must be auto, ipv4 or ipv6 (got '$connect_family')" ;;
+esac
+
+case "$protocol" in
+    anyconnect|gp|pulse|fortinet|nc|array) ;;
+    *) fatal "PROTOCOL must be one of anyconnect, gp, pulse, fortinet, nc, array (got '$protocol')" ;;
+esac
+
+case "$dtls" in
+    on|off) ;;
+    *) fatal "DTLS must be on or off (got '$dtls')" ;;
+esac
+
+case "$ipv6_mode" in
+    auto|require|off) ;;
+    *) fatal "IPV6_MODE must be auto, require or off (got '$ipv6_mode')" ;;
+esac
+
+case "$gateway_dns" in
+    redirect|local|off) ;;
+    *) fatal "GATEWAY_DNS must be redirect, local or off (got '$gateway_dns')" ;;
+esac
+
+case "$reconnect_delay" in
+    ''|*[!0-9]*) fatal "RECONNECT_DELAY must be a number of seconds (got '$reconnect_delay')" ;;
+esac
+
+# ---- Authentication --------------------------------------------------------
+auth_mode=""
+if [ -n "$auth_pass_file" ] && [ ! -r "$auth_pass_file" ]; then
+    fatal "PASS_FILE '$auth_pass_file' is not readable"
+fi
+if [ -n "$auth_user" ] && [ -n "$(get_password)" ]; then
+    auth_mode="password"
+fi
+if [ -n "$cert_file" ]; then
+    [ -r "$cert_file" ] || fatal "CERT_FILE '$cert_file' is not readable"
+    case "$cert_file" in
+        *.p12|*.pfx) ;;
+        *)
+            if [ -n "$key_file" ]; then
+                [ -r "$key_file" ] || fatal "KEY_FILE '$key_file' is not readable"
+            fi
+            ;;
+    esac
+    auth_mode="${auth_mode:+$auth_mode+}certificate"
+fi
+[ -n "$auth_mode" ] || fatal "No authentication configured: set USER + PASS/PASS_FILE and/or CERT_FILE"
+
+# ---- Server trust ----------------------------------------------------------
+trust="public CA"
+if [ -n "$ca_file" ]; then
+    [ -r "$ca_file" ] || fatal "CA_FILE '$ca_file' is not readable"
+    trust="CA_FILE"
+elif [ -n "$servercert" ]; then
+    trust="SERVERCERT pin"
+fi
+if [ "$insecure" = "true" ]; then
+    trust="INSECURE (certificate verification disabled - unsafe)"
+fi
+
+log "[$SCRIPT_NAME] protocol=$protocol auth=$auth_mode trust=$trust dtls=$dtls connect_family=$connect_family ipv6_mode=$ipv6_mode split_tunnel=$split_tunnel gateway_mode=$gateway_mode"
+log "[$SCRIPT_NAME] Environment validated"

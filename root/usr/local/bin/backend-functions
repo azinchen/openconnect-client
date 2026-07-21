@@ -1,0 +1,165 @@
+#!/bin/sh
+# shellcheck shell=sh
+#
+# Shared environment parsing and helpers, sourced by every script in the
+# image. Boolean flags are normalized to "true"/"false" (accepting "true"
+# or "1"), so consumers only ever compare against "true".
+
+to_bool() { case "${1:-}" in true|1) echo "true" ;; *) echo "false" ;; esac; }
+
+# Create lowercase copies of environment variables
+url_list="${URL:-}"
+connect_family="${CONNECT_FAMILY:-auto}"
+protocol="${PROTOCOL:-anyconnect}"
+auth_user="${USER:-}"
+auth_pass="${PASS:-}"
+auth_pass_file="${PASS_FILE:-}"
+cert_file="${CERT_FILE:-}"
+key_file="${KEY_FILE:-}"
+cert_pass="${CERT_PASS:-}"
+ca_file="${CA_FILE:-}"
+servercert="${SERVERCERT:-}"
+insecure="$(to_bool "${INSECURE:-}")"
+dtls="${DTLS:-on}"
+mtu="${MTU:-}"
+split_tunnel="$(to_bool "${SPLIT_TUNNEL:-}")"
+ipv6_mode="${IPV6_MODE:-auto}"
+network="${NETWORK:-}"
+network6="${NETWORK6:-}"
+gateway_mode="$(to_bool "${GATEWAY_MODE:-}")"
+gateway_network="${GATEWAY_NETWORK:-}"
+gateway_network6="${GATEWAY_NETWORK6:-}"
+gateway_nat6="$(to_bool "${GATEWAY_NAT6:-true}")"
+gateway_dns="${GATEWAY_DNS:-redirect}"
+dns_override="${DNS:-}"
+reconnect_delay="${RECONNECT_DELAY:-5}"
+health_check_enabled="$(to_bool "${HEALTH_CHECK_ENABLED:-}")"
+check_connection_url="${CHECK_CONNECTION_URL:-https://www.google.com}"
+openconnect_opts="${OPENCONNECT_OPTS:-}"
+network_diagnostic_enabled="$(to_bool "${NETWORK_DIAGNOSTIC_ENABLED:-}")"
+
+# Interfaces
+wan_if="eth0"
+tun_if="tun0"
+
+# Runtime state shared between the s6 services, vpnc-script and healthcheck
+state_dir="/run/openconnect-client"
+urls_file="$state_dir/urls"
+url_index_file="$state_dir/url-index"
+failure_count_file="$state_dir/failures"
+connect_state_file="$state_dir/connected"
+resolv_backup_file="$state_dir/resolv.conf.orig"
+has_ipv6_file="$state_dir/has-ipv6"
+
+# Consecutive connect failures on one URL before advancing to the next
+# entry of the ordered failover list
+url_max_failures=3
+
+# Cap for the exponential reconnect backoff (seconds). Keep in sync with
+# svc-openconnect/timeout-finish, which must exceed this value.
+reconnect_delay_max=300
+
+# Logging functions
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1"
+}
+
+log_error() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >&2
+}
+
+# Print a URL with its query string (the camouflage secret) redacted
+redact_url() {
+    case "$1" in
+        *\?*) printf '%s?<redacted>\n' "${1%%\?*}" ;;
+        *)    printf '%s\n' "$1" ;;
+    esac
+}
+
+# Parse one connection URL entry. Accepts https://host[:port][/][?secret],
+# bare host (https:// implied) and bracketed IPv6 literals. On success sets
+# parsed_host, parsed_port, parsed_url (normalized, secret preserved) and
+# returns 0; returns 1 on any malformed input.
+parse_url() {
+    _u="$1"
+    case "$_u" in
+        https://*) _rest="${_u#https://}" ;;
+        *://*)     return 1 ;;
+        *)         _rest="$_u"; _u="https://$_u" ;;
+    esac
+    # Strip path + query to isolate host[:port]
+    _hostport="${_rest%%/*}"
+    _hostport="${_hostport%%\?*}"
+    [ -n "$_hostport" ] || return 1
+    case "$_hostport" in
+        \[*\]|\[*\]:*)
+            parsed_host="${_hostport%%\]*}"
+            parsed_host="${parsed_host#\[}"
+            _p="${_hostport##*\]}"
+            case "$_p" in
+                "")  parsed_port=443 ;;
+                :*)  parsed_port="${_p#:}" ;;
+                *)   return 1 ;;
+            esac
+            ;;
+        \[*|*\]*)
+            return 1 ;;
+        *:*:*)
+            # Bare IPv6 literal without brackets: accept, no port possible
+            parsed_host="$_hostport"
+            parsed_port=443
+            _u="$(printf '%s' "$_u" | sed "s|$_hostport|[$_hostport]|")"
+            ;;
+        *:*)
+            parsed_host="${_hostport%%:*}"
+            parsed_port="${_hostport##*:}"
+            ;;
+        *)
+            parsed_host="$_hostport"
+            parsed_port=443
+            ;;
+    esac
+    [ -n "$parsed_host" ] || return 1
+    case "$parsed_port" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$parsed_port" -ge 1 ] && [ "$parsed_port" -le 65535 ] || return 1
+    parsed_url="$_u"
+    return 0
+}
+
+is_ipv4_literal() {
+    printf '%s' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+}
+
+is_ipv6_literal() {
+    case "$1" in
+        *:*) return 0 ;;
+        *)   return 1 ;;
+    esac
+}
+
+# Check if VPN is connected by checking for the tun interface
+is_vpn_connected() {
+    ip link show "$tun_if" >/dev/null 2>&1
+}
+
+# IPv6 usable in this container (decided once by init-sysctl)
+ipv6_available() {
+    [ "$(cat "$has_ipv6_file" 2>/dev/null)" = "1" ]
+}
+
+# Does eth0 have a global IPv6 default route (i.e. can we reach the
+# server over IPv6 at all)?
+has_global_ipv6() {
+    [ -n "$(ip -6 route show default dev "$wan_if" 2>/dev/null)" ]
+}
+
+# Effective password: PASS wins, then PASS_FILE / Docker secret
+get_password() {
+    if [ -n "$auth_pass" ]; then
+        printf '%s' "$auth_pass"
+    elif [ -n "$auth_pass_file" ] && [ -r "$auth_pass_file" ]; then
+        head -n1 "$auth_pass_file"
+    fi
+}

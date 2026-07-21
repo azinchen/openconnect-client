@@ -1,0 +1,174 @@
+#!/bin/sh
+# shellcheck shell=sh
+#
+# Gateway mode (GATEWAY_MODE=true): let containers with their own netns and
+# LAN hosts route through this container into the tunnel. Adds forward and
+# NAT rules to the kill-switch table (inet vpn) and fills the @gw_clients4/6
+# sets with the source CIDRs allowed to use the gateway.
+#
+# Gateway-client DNS is pure nft, no daemon in the image (design D1):
+#   GATEWAY_DNS=redirect  DNAT port 53 from clients to the tunnel-pushed
+#                         resolvers (dns_redirect chain, refilled atomically
+#                         by dns-update on every (re)connect). Queries aimed
+#                         at an address local to this netns pass untouched.
+#   GATEWAY_DNS=local     DNAT ALL client port-53 traffic to this container,
+#                         for a co-located resolver (AdGuard Home, Pi-hole,
+#                         unbound) running in network_mode: service:vpn.
+#   GATEWAY_DNS=off       no interception.
+#
+# Usage:
+#   gateway setup                  (init-firewall, after firewall install)
+#   gateway dns-update "<v4>" "<v6>"   (vpnc-script on connect/reconnect;
+#                                          space-separated resolver lists)
+
+set -eu
+
+. /usr/local/bin/backend-functions
+
+SCRIPT_NAME="GATEWAY"
+
+split_list() {
+    printf '%s\n' "${1:-}" | tr ',;' '\n\n' | sed '/^[[:space:]]*$/d'
+}
+
+# Kernel-connected prefixes on eth0 - the zero-config default for
+# "route my compose network through the VPN"
+eth0_subnets4() {
+    ip -4 route show dev "$wan_if" proto kernel 2>/dev/null | awk '{ print $1 }'
+}
+
+eth0_subnets6() {
+    ip -6 route show dev "$wan_if" proto kernel 2>/dev/null | awk '{ print $1 }' | grep -v '^fe80'
+}
+
+cmd_setup() {
+    [ "$gateway_mode" = "true" ] || {
+        log "[$SCRIPT_NAME] GATEWAY_MODE not enabled; skipping"
+        return 0
+    }
+
+    clients4="$(split_list "$gateway_network")"
+    [ -n "$clients4" ] || clients4="$(eth0_subnets4)"
+    clients6="$(split_list "$gateway_network6")"
+    [ -n "$clients6" ] || clients6="$(eth0_subnets6 || true)"
+
+    if [ -z "$clients4" ] && [ -z "$clients6" ]; then
+        log_error "[$SCRIPT_NAME] No gateway client networks found (GATEWAY_NETWORK unset and no subnets on $wan_if)"
+        return 1
+    fi
+
+    # NAT66 masquerade is the default because ocserv assigns a single
+    # /128-ish client address; the tunnel won't route a delegated prefix.
+    # GATEWAY_NAT6=false switches to pure routing for servers that do.
+    nat6_rule=""
+    if [ "$gateway_nat6" = "true" ]; then
+        nat6_rule="oifname \"$tun_if\" ip6 saddr @gw_clients6 masquerade"
+    fi
+
+    # DNS interception (see header). The prerouting base chain is only
+    # installed when interception is on; the dns_redirect chain body is
+    # owned by cmd_dns_update in redirect mode and static in local mode.
+    dns_nat_chains=""
+    dns_input_rules=""
+    case "$gateway_dns" in
+        redirect)
+            dns_nat_chains="
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        jump dns_redirect
+    }
+    chain dns_redirect {
+    }"
+            ;;
+        local)
+            # redirect (dnat-to-local) also captures clients with hardcoded
+            # public DNS (smart TVs); the co-located resolver answers, and
+            # its own upstream traffic follows the tun0 default route
+            dns_nat_chains="
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        iifname \"$wan_if\" ip  saddr @gw_clients4 udp dport 53 redirect
+        iifname \"$wan_if\" ip  saddr @gw_clients4 tcp dport 53 redirect
+        iifname \"$wan_if\" ip6 saddr @gw_clients6 udp dport 53 redirect
+        iifname \"$wan_if\" ip6 saddr @gw_clients6 tcp dport 53 redirect
+    }"
+            dns_input_rules="iifname \"$wan_if\" ip  saddr @gw_clients4 udp dport 53 accept
+        iifname \"$wan_if\" ip  saddr @gw_clients4 tcp dport 53 accept
+        iifname \"$wan_if\" ip6 saddr @gw_clients6 udp dport 53 accept
+        iifname \"$wan_if\" ip6 saddr @gw_clients6 tcp dport 53 accept
+        iifname \"$wan_if\" ip  saddr @lan4 udp dport 53 accept
+        iifname \"$wan_if\" ip  saddr @lan4 tcp dport 53 accept
+        iifname \"$wan_if\" ip6 saddr @lan6 udp dport 53 accept
+        iifname \"$wan_if\" ip6 saddr @lan6 tcp dport 53 accept"
+            ;;
+    esac
+
+    # MSS clamp covers both families and both directions (single rule, no
+    # iif/oif match). Forwarding is only opened eth0->tun0 for the client
+    # sets: with the tunnel down there is no tun0, so nothing can leak.
+    nft -f - <<EOF
+table inet vpn {
+    chain forward {
+        tcp flags syn tcp option maxseg size set rt mtu
+        iifname "$wan_if" oifname "$tun_if" ip  saddr @gw_clients4 accept
+        iifname "$wan_if" oifname "$tun_if" ip6 saddr @gw_clients6 accept
+        iifname "$tun_if" oifname "$wan_if" ct state established,related accept
+    }
+    chain input {
+        $dns_input_rules
+    }
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "$tun_if" ip saddr @gw_clients4 masquerade
+        $nat6_rule
+    }$dns_nat_chains
+}
+EOF
+
+    for net in $clients4; do
+        nft add element inet vpn gw_clients4 "{ $net }"
+    done
+    for net in $clients6; do
+        nft add element inet vpn gw_clients6 "{ $net }"
+    done
+
+    log "[$SCRIPT_NAME] Gateway mode active: clients4=[$(printf '%s ' $clients4 | sed 's/ $//')] clients6=[$(printf '%s ' $clients6 | sed 's/ $//')] nat6=$gateway_nat6 dns=$gateway_dns"
+}
+
+# Point the redirect-mode DNAT at the current resolvers (first of each
+# family). Called by vpnc-script on every connect/reconnect; flush + refill
+# in one nft transaction = atomic swap, same pattern as the endpoint sets.
+cmd_dns_update() {
+    [ "$gateway_mode" = "true" ] && [ "$gateway_dns" = "redirect" ] || return 0
+
+    r4="${1%% *}"
+    r6="${2%% *}"
+
+    rules=""
+    if [ -n "$r4" ]; then
+        # fib daddr type != local: queries deliberately aimed at an address
+        # inside this netns (a co-located resolver) pass untouched
+        rules="add rule inet vpn dns_redirect iifname \"$wan_if\" ip saddr @gw_clients4 udp dport 53 fib daddr type != local dnat ip to $r4:53
+add rule inet vpn dns_redirect iifname \"$wan_if\" ip saddr @gw_clients4 tcp dport 53 fib daddr type != local dnat ip to $r4:53"
+    fi
+    if [ -n "$r6" ]; then
+        rules="$rules
+add rule inet vpn dns_redirect iifname \"$wan_if\" ip6 saddr @gw_clients6 udp dport 53 fib daddr type != local dnat ip6 to [$r6]:53
+add rule inet vpn dns_redirect iifname \"$wan_if\" ip6 saddr @gw_clients6 tcp dport 53 fib daddr type != local dnat ip6 to [$r6]:53"
+    fi
+
+    nft -f - <<EOF
+flush chain inet vpn dns_redirect
+$rules
+EOF
+    log "[$SCRIPT_NAME] DNS redirect updated: v4=${r4:-none} v6=${r6:-none}"
+}
+
+case "${1:-}" in
+    setup)      cmd_setup ;;
+    dns-update) shift; cmd_dns_update "${1:-}" "${2:-}" ;;
+    *)
+        log_error "[$SCRIPT_NAME] Unknown command: ${1:-<none>}"
+        exit 1
+        ;;
+esac
