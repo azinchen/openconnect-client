@@ -110,7 +110,8 @@ like any environment variable it remains visible in `docker inspect`).
 | `GATEWAY_MODE` | `false` | Enable forwarding/NAT gateway for other-netns clients |
 | `GATEWAY_NETWORK` / `GATEWAY_NETWORK6` | eth0 subnets | Source CIDRs allowed to use the gateway |
 | `GATEWAY_NAT6` | `true` | NAT66 masquerade (default) vs pure IPv6 routing |
-| `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` (DNAT port 53 to the tunnel-pushed resolvers) \| `local` (DNAT port 53 to this container, for a co-located resolver) \| `off` |
+| `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` (DNAT port 53 to the tunnel-pushed resolvers) \| `local` (DNAT port 53 to this container, for a co-located resolver) \| `forward` (DNAT port 53 to an external resolver reached directly over eth0, e.g. a LAN AdGuard — set `GATEWAY_DNS_SERVER`) \| `off` |
+| `GATEWAY_DNS_SERVER` | — | External resolver IP(s) for `GATEWAY_DNS=forward` (`;`-list, one IPv4 and/or one IPv6). Reached directly, **not** through the tunnel |
 | `DNS` | pushed | Override DNS servers (`;`-list, IPv4/IPv6 mixed; `127.0.0.1` to use a co-located resolver for the netns itself) |
 | `RECONNECT_DELAY` | `5` | Base delay between reconnect attempts (exponential backoff, capped at 300s) |
 | `HEALTH_CHECK_ENABLED` | `false` | Enable the Docker HEALTHCHECK probe |

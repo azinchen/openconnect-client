@@ -54,7 +54,8 @@ See [[Local Network Access]].
 | `GATEWAY_NETWORK` | eth0 subnets | `;`-list of IPv4 source CIDRs allowed to use the gateway |
 | `GATEWAY_NETWORK6` | eth0 subnets | Same for IPv6 |
 | `GATEWAY_NAT6` | `true` | Masquerade IPv6 (NAT66). Set `false` when the server routes the client subnet |
-| `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` \| `local` \| `off` — see [[Gateway DNS]] |
+| `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` \| `local` \| `forward` \| `off` — see [[Gateway DNS]] |
+| `GATEWAY_DNS_SERVER` | — | External resolver IP(s) for `GATEWAY_DNS=forward`; `;`-list of one IPv4 and/or one IPv6, reached directly over eth0 (not the tunnel) |
 
 See [[Gateway Mode]].
 

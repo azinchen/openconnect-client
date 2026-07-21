@@ -40,6 +40,27 @@ Why this composition is the recommended full-featured path:
 
 **Bootstrap caveat:** the resolver starts behind the fail-closed firewall *before* the tunnel is up, so it cannot resolve its own upstream hostnames at that point. Configure its upstreams as plain IPs, or set its bootstrap DNS to IPs (AdGuard: *Settings → DNS → Bootstrap DNS*).
 
+## `forward`
+
+**All** client port-53 traffic is DNAT-ed to an external resolver named by `GATEWAY_DNS_SERVER`, reached **directly over eth0** — a resolver on your LAN or another container that is *not* in this VPN's network namespace (e.g. an existing AdGuard Home you already run elsewhere):
+
+```yaml
+  vpn:
+    # ... gateway mode config ...
+    environment:
+      - GATEWAY_DNS=forward
+      - GATEWAY_DNS_SERVER=192.168.1.50        # LAN AdGuard; ;-list may add one IPv6
+```
+
+Like `local`, this forces capture of clients with hardcoded public DNS. Unlike `local`, the resolver is a separate host, so the gateway:
+
+- DNATs the query to `GATEWAY_DNS_SERVER` and **masquerades** it, so the resolver replies to the gateway (which un-NATs back to the client);
+- **pins a host route** to the resolver over eth0 when it is off-subnet, so the tunnel's default routes can't hijack the query. A resolver on a connected subnet (same LAN/Docker network) needs no pin.
+
+> **⚠️ This resolver's upstream queries are outside the tunnel and the kill switch.** The gateway delivers the client's query to `GATEWAY_DNS_SERVER` over eth0 in the clear, and that resolver then does its *own* upstream resolution wherever its host routes it — not through this VPN. Use `forward` when the external resolver is trusted LAN infrastructure; if you need the resolver's upstream tunneled too, run it co-located instead (`local`).
+
+`GATEWAY_DNS_SERVER` accepts one IPv4 and/or one IPv6 (`;`- or `,`-separated); each family's clients are forwarded to the matching address.
+
 ## `off`
 
 No interception. Clients use whatever resolver they are configured with; their queries are routed through the tunnel like any other traffic.
@@ -60,5 +81,5 @@ Point a routed client's resolver at an address that is definitely *not* a DNS se
 
 ```bash
 echo 'nameserver 192.0.2.1' > /etc/resolv.conf
-nslookup example.com        # works in redirect/local mode, times out in off mode
+nslookup example.com        # works in redirect/local/forward mode, times out in off mode
 ```

@@ -14,12 +14,20 @@
 #   GATEWAY_DNS=local     DNAT ALL client port-53 traffic to this container,
 #                         for a co-located resolver (AdGuard Home, Pi-hole,
 #                         unbound) running in network_mode: service:vpn.
+#   GATEWAY_DNS=forward   DNAT ALL client port-53 traffic to an external
+#                         resolver (GATEWAY_DNS_SERVER) reached DIRECTLY over
+#                         eth0, not through the tunnel. That resolver's own
+#                         upstream traffic is outside this VPN's tunnel and
+#                         kill switch. Needs a hairpin forward accept, a
+#                         masquerade so the resolver replies via the gateway,
+#                         and a pinned route so the tunnel can't hijack it.
 #   GATEWAY_DNS=off       no interception.
 #
 # Usage:
 #   gateway setup                  (init-firewall, after firewall install)
 #   gateway dns-update "<v4>" "<v6>"   (vpnc-script on connect/reconnect;
-#                                          space-separated resolver lists)
+#                                          space-separated resolver lists;
+#                                          only acts in redirect mode)
 
 set -eu
 
@@ -39,6 +47,36 @@ eth0_subnets4() {
 
 eth0_subnets6() {
     ip -6 route show dev "$wan_if" proto kernel 2>/dev/null | awk '{ print $1 }' | grep -v '^fe80'
+}
+
+# Pin a host route to an off-subnet forward DNS server so the tunnel's
+# half-default routes (0.0.0.0/1 / ::/1, installed on connect) cannot later
+# hijack it. Runs at firewall-install time, before the tunnel is up, so the
+# kernel's route lookup still reflects the real eth0 path.
+#   - directly-connected server: the connected route is longer-prefix than
+#     the half-defaults and always wins, so nothing is pinned;
+#   - via the eth0 gateway: a /32 (/128) is pinned via that gateway.
+ensure_server_route() {
+    _ip="$1"; _fam="$2"
+    [ -n "$_ip" ] || return 0
+    _line="$(ip -"$_fam" route get "$_ip" 2>/dev/null | head -1)"
+    case "$_line" in
+        *" via "*" dev $wan_if"*)
+            _gw="$(printf '%s' "$_line" | sed -n 's/.* via \([^ ]*\).*/\1/p')"
+            _pfx=32; [ "$_fam" = 6 ] && _pfx=128
+            if ip -"$_fam" route replace "$_ip/$_pfx" via "$_gw" dev "$wan_if" 2>/dev/null; then
+                log "[$SCRIPT_NAME] Pinned route to DNS server $_ip via $_gw dev $wan_if"
+            else
+                log_error "[$SCRIPT_NAME] Warning: could not pin route to DNS server $_ip"
+            fi
+            ;;
+        *" dev $wan_if"*)
+            : # directly connected on eth0 - connected route already wins
+            ;;
+        *)
+            log_error "[$SCRIPT_NAME] Warning: DNS server $_ip is not reachable via $wan_if; forwarding will fail once the tunnel is up"
+            ;;
+    esac
 }
 
 cmd_setup() {
@@ -65,11 +103,24 @@ cmd_setup() {
         nat6_rule="oifname \"$tun_if\" ip6 saddr @gw_clients6 masquerade"
     fi
 
+    # forward-mode target: first resolver of each family
+    server4=""; server6=""
+    if [ "$gateway_dns" = "forward" ]; then
+        for s in $(split_list "$gateway_dns_server"); do
+            case "$s" in
+                *:*) [ -z "$server6" ] && server6="$s" ;;
+                *)   [ -z "$server4" ] && server4="$s" ;;
+            esac
+        done
+    fi
+
     # DNS interception (see header). The prerouting base chain is only
     # installed when interception is on; the dns_redirect chain body is
-    # owned by cmd_dns_update in redirect mode and static in local mode.
+    # owned by cmd_dns_update in redirect mode and static in local/forward.
     dns_nat_chains=""
     dns_input_rules=""
+    dns_forward_rules=""
+    dns_masq_rules=""
     case "$gateway_dns" in
         redirect)
             dns_nat_chains="
@@ -101,6 +152,40 @@ cmd_setup() {
         iifname \"$wan_if\" ip6 saddr @lan6 udp dport 53 accept
         iifname \"$wan_if\" ip6 saddr @lan6 tcp dport 53 accept"
             ;;
+        forward)
+            # DNAT client port 53 -> the external resolver, then hairpin it
+            # back out eth0 (forward accept) with a masquerade so the
+            # resolver replies to us. The reply un-NATs through conntrack:
+            # the established eth0<->eth0 forward accept carries it back.
+            dnat_rules=""
+            fwd_rules=""
+            masq_rules=""
+            if [ -n "$server4" ]; then
+                dnat_rules="iifname \"$wan_if\" ip  saddr @gw_clients4 udp dport 53 dnat ip to $server4:53
+        iifname \"$wan_if\" ip  saddr @gw_clients4 tcp dport 53 dnat ip to $server4:53"
+                fwd_rules="iifname \"$wan_if\" oifname \"$wan_if\" ip  saddr @gw_clients4 ip  daddr $server4 udp dport 53 accept
+        iifname \"$wan_if\" oifname \"$wan_if\" ip  saddr @gw_clients4 ip  daddr $server4 tcp dport 53 accept"
+                masq_rules="oifname \"$wan_if\" ip  saddr @gw_clients4 ip  daddr $server4 masquerade"
+            fi
+            if [ -n "$server6" ]; then
+                dnat_rules="${dnat_rules:+$dnat_rules
+        }iifname \"$wan_if\" ip6 saddr @gw_clients6 udp dport 53 dnat ip6 to [$server6]:53
+        iifname \"$wan_if\" ip6 saddr @gw_clients6 tcp dport 53 dnat ip6 to [$server6]:53"
+                fwd_rules="${fwd_rules:+$fwd_rules
+        }iifname \"$wan_if\" oifname \"$wan_if\" ip6 saddr @gw_clients6 ip6 daddr $server6 udp dport 53 accept
+        iifname \"$wan_if\" oifname \"$wan_if\" ip6 saddr @gw_clients6 ip6 daddr $server6 tcp dport 53 accept"
+                masq_rules="${masq_rules:+$masq_rules
+        }oifname \"$wan_if\" ip6 saddr @gw_clients6 ip6 daddr $server6 masquerade"
+            fi
+            dns_nat_chains="
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        $dnat_rules
+    }"
+            dns_forward_rules="iifname \"$wan_if\" oifname \"$wan_if\" ct state established,related accept
+        $fwd_rules"
+            dns_masq_rules="$masq_rules"
+            ;;
     esac
 
     # MSS clamp covers both families and both directions (single rule, no
@@ -113,6 +198,7 @@ table inet vpn {
         iifname "$wan_if" oifname "$tun_if" ip  saddr @gw_clients4 accept
         iifname "$wan_if" oifname "$tun_if" ip6 saddr @gw_clients6 accept
         iifname "$tun_if" oifname "$wan_if" ct state established,related accept
+        $dns_forward_rules
     }
     chain input {
         $dns_input_rules
@@ -121,9 +207,16 @@ table inet vpn {
         type nat hook postrouting priority srcnat; policy accept;
         oifname "$tun_if" ip saddr @gw_clients4 masquerade
         $nat6_rule
+        $dns_masq_rules
     }$dns_nat_chains
 }
 EOF
+
+    # forward mode: make sure the external resolver is reachable off-tunnel
+    if [ "$gateway_dns" = "forward" ]; then
+        ensure_server_route "$server4" 4
+        ensure_server_route "$server6" 6
+    fi
 
     for net in $clients4; do
         nft add element inet vpn gw_clients4 "{ $net }"
@@ -132,7 +225,9 @@ EOF
         nft add element inet vpn gw_clients6 "{ $net }"
     done
 
-    log "[$SCRIPT_NAME] Gateway mode active: clients4=[$(printf '%s ' $clients4 | sed 's/ $//')] clients6=[$(printf '%s ' $clients6 | sed 's/ $//')] nat6=$gateway_nat6 dns=$gateway_dns"
+    dns_desc="$gateway_dns"
+    [ "$gateway_dns" = "forward" ] && dns_desc="forward->${server4:-}${server4:+,}${server6:-}"
+    log "[$SCRIPT_NAME] Gateway mode active: clients4=[$(printf '%s ' $clients4 | sed 's/ $//')] clients6=[$(printf '%s ' $clients6 | sed 's/ $//')] nat6=$gateway_nat6 dns=$dns_desc"
 }
 
 # Point the redirect-mode DNAT at the current resolvers (first of each

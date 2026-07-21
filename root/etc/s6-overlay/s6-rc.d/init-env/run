@@ -69,9 +69,33 @@ case "$ipv6_mode" in
 esac
 
 case "$gateway_dns" in
-    redirect|local|off) ;;
-    *) fatal "GATEWAY_DNS must be redirect, local or off (got '$gateway_dns')" ;;
+    redirect|local|forward|off) ;;
+    *) fatal "GATEWAY_DNS must be redirect, local, forward or off (got '$gateway_dns')" ;;
 esac
+
+# forward mode DNATs client DNS to an explicit external resolver reached
+# directly over eth0 (not the tunnel); it needs a valid target address
+if [ "$gateway_dns" = "forward" ]; then
+    [ "$gateway_mode" = "true" ] || fatal "GATEWAY_DNS=forward requires GATEWAY_MODE=true"
+    [ -n "$gateway_dns_server" ] || fatal "GATEWAY_DNS=forward requires GATEWAY_DNS_SERVER (the external resolver's IP address)"
+    fwd_v4=""; fwd_v6=""
+    oldIFS="$IFS"; IFS=',;'
+    for s in $gateway_dns_server; do
+        s="$(printf '%s' "$s" | tr -d '[:space:]')"
+        [ -n "$s" ] || continue
+        if is_ipv4_literal "$s"; then
+            fwd_v4="$s"
+        elif is_ipv6_literal "$s"; then
+            fwd_v6="$s"
+        else
+            IFS="$oldIFS"
+            fatal "GATEWAY_DNS_SERVER entry '$s' is not an IPv4 or IPv6 address"
+        fi
+    done
+    IFS="$oldIFS"
+    [ -n "$fwd_v4" ] || [ -n "$fwd_v6" ] || fatal "GATEWAY_DNS_SERVER has no usable IP address"
+    log "[$SCRIPT_NAME] Gateway-client DNS will be forwarded to ${fwd_v4:-}${fwd_v4:+ }${fwd_v6:-}"
+fi
 
 case "$reconnect_delay" in
     ''|*[!0-9]*) fatal "RECONNECT_DELAY must be a number of seconds (got '$reconnect_delay')" ;;
