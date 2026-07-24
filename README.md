@@ -108,7 +108,7 @@ like any environment variable it remains visible in `docker inspect`).
 | `IPV6_MODE` | `auto` | Tunnel IPv6 data plane: `auto` (use if pushed, never leak) \| `require` (reconnect until dual-stack) \| `off` |
 | `NETWORK` / `NETWORK6` | — | `;`-list of LAN CIDRs allowed to reach the container via eth0 (return routes + firewall) |
 | `GATEWAY_MODE` | `false` | Enable forwarding/NAT gateway for other-netns clients |
-| `GATEWAY_NETWORK` / `GATEWAY_NETWORK6` | eth0 subnets | Source CIDRs allowed to use the gateway |
+| `FORWARD_FROM` / `FORWARD_FROM6` | eth0 subnets | Source CIDRs allowed to use the gateway |
 | `GATEWAY_NAT6` | `true` | NAT66 masquerade (default) vs pure IPv6 routing |
 | `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` (DNAT port 53 to the tunnel-pushed resolvers) \| `local` (DNAT port 53 to this container, for a co-located resolver) \| `forward` (DNAT port 53 to an external resolver reached directly over eth0, e.g. a LAN AdGuard — set `GATEWAY_DNS_SERVER`) \| `off` |
 | `GATEWAY_DNS_SERVER` | — | External resolver IP(s) for `GATEWAY_DNS=forward` (`;`-list, one IPv4 and/or one IPv6). Reached directly, **not** through the tunnel |
@@ -156,7 +156,7 @@ sysctls:
   - net.ipv6.conf.all.disable_ipv6=0
 ```
 
-`GATEWAY_NETWORK`/`GATEWAY_NETWORK6` limit which sources may use the gateway
+`FORWARD_FROM`/`FORWARD_FROM6` limit which sources may use the gateway
 (default: the container's own eth0 subnets). IPv6 is masqueraded (NAT66) by
 default because ocserv assigns a single client address; set
 `GATEWAY_NAT6=false` if your server routes the client subnet.
@@ -174,6 +174,9 @@ default because ocserv assigns a single client address; set
   traffic follows the tunnel and the kill switch automatically. This is the
   recommended setup for full-time gateway use — see the wiki's
   [Docker Compose Examples](https://github.com/azinchen/openconnect-client/wiki/Docker-Compose-Examples).
+- `forward` — **all** client port-53 traffic is DNAT-ed to an external
+  resolver (`GATEWAY_DNS_SERVER`, e.g. an AdGuard Home on the LAN) reached
+  directly over eth0, **not** through the tunnel.
 - `off` — no interception; clients use whatever resolver they are
   configured with, routed through the tunnel like ordinary traffic.
 

@@ -51,8 +51,8 @@ See [[Local Network Access]].
 | Variable | Default | Description |
 |---|---|---|
 | `GATEWAY_MODE` | `false` | Act as a NAT gateway for other-netns containers and LAN hosts. Requires forwarding sysctls — the container verifies them and prints the exact `sysctls:` block if missing |
-| `GATEWAY_NETWORK` | eth0 subnets | `;`-list of IPv4 source CIDRs allowed to use the gateway |
-| `GATEWAY_NETWORK6` | eth0 subnets | Same for IPv6 |
+| `FORWARD_FROM` | eth0 subnets | `;`-list of IPv4 source CIDRs allowed to use the gateway |
+| `FORWARD_FROM6` | eth0 subnets | Same for IPv6 |
 | `GATEWAY_NAT6` | `true` | Masquerade IPv6 (NAT66). Set `false` when the server routes the client subnet |
 | `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` \| `local` \| `forward` \| `off` — see [[Gateway DNS]] |
 | `GATEWAY_DNS_SERVER` | — | External resolver IP(s) for `GATEWAY_DNS=forward`; `;`-list of one IPv4 and/or one IPv6, reached directly over eth0 (not the tunnel) |
