@@ -137,7 +137,7 @@ RUN apk --no-cache --no-progress add \
     iproute2-minimal=7.0.0-r0 \
     nftables=1.1.6-r1 \
     curl=8.21.0-r0 \
-    bind-tools=9.20.24-r0 \
+    bind-tools=9.20.26-r0 \
     openssl=3.5.7-r0 \
     ca-certificates=20260611-r0 \
     tzdata=2026c-r0
