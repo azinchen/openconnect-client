@@ -37,7 +37,29 @@ configure_tun() {
     fi
 }
 
+protect_server_route() {
+    # Keep openconnect's own connection to the VPN server off the tunnel.
+    # Without this, the half-default routes below (or a split-include that
+    # covers the server) loop our own CSTP/DTLS socket back through tun, so
+    # no data ever flows. The stock vpnc-script does this via
+    # set_vpngateway_route(); this minimal script must do it too.
+    [ -n "${VPNGATEWAY:-}" ] || return 0
+    case "$VPNGATEWAY" in
+        *:*) _fam="-6"; _plen=128 ;;
+        *)   _fam="-4"; _plen=32 ;;
+    esac
+    _ogw=$(ip "$_fam" route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}')
+    _oif=$(ip "$_fam" route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')
+    if [ -n "$_ogw" ]; then
+        ip "$_fam" route replace "$VPNGATEWAY/$_plen" via "$_ogw" dev "$_oif" 2>/dev/null || true
+    elif [ -n "$_oif" ]; then
+        # On-link default with no gateway (e.g. a point-to-point uplink)
+        ip "$_fam" route replace "$VPNGATEWAY/$_plen" dev "$_oif" 2>/dev/null || true
+    fi
+}
+
 configure_routes() {
+    protect_server_route
     if [ "$split_tunnel" = "true" ] && [ "${CISCO_SPLIT_INC:-0}" -gt 0 ]; then
         i=0
         while [ "$i" -lt "${CISCO_SPLIT_INC:-0}" ]; do

@@ -55,6 +55,7 @@ Details that matter:
 - **ICMPv6 neighbor discovery** is stateless and required for IPv6 on eth0; only the specific ND types are allowed.
 - The `oifname "tun0"` accept combined with dropped eth0 means **a v4-only firewall bypass via IPv6 is impossible** — both families share one table and one policy.
 - A second, separate table `inet vpn_mss` (mangle priority, `policy accept`) clamps the TCP MSS of the container's own eth0 traffic — path MTU by default, a hard cap with the `MSS` variable. It only rewrites the MSS option of SYN packets and **cannot accept traffic the kill switch drops**: acceptance is decided solely by `inet vpn`, which is why the clamp lives outside it.
+- The vpnc-script **pins a host route for the VPN server** via the original default gateway (so the tunnel's own routes can't capture the control connection). Routing only — whether a packet may actually leave eth0 is still decided solely by the kill switch's endpoint sets.
 
 ## The bootstrap DNS hole — lifecycle
 

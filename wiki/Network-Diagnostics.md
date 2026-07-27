@@ -43,6 +43,7 @@ ip -s link show tun0            # byte counters - is traffic actually flowing?
 # Routing (expect half-defaults via tun0)
 ip route
 ip -6 route
+ip route get <server-ip>        # must resolve via eth0, NOT dev tun0
 
 # The complete firewall state
 nft list table inet vpn
@@ -71,7 +72,7 @@ cat /run/openconnect-client/failures           # consecutive failure count
 | resolv.conf shows tunnel DNS while disconnected | Only transiently, during openconnect's internal reconnect window; a full service restart restores bootstrap DNS |
 | `curl --interface eth0` succeeds | Kill switch not active — the container was started without `NET_ADMIN`, or the table was flushed manually |
 | Big transfers stall, small requests fine | MTU — try `MTU=1300`, see [[Troubleshooting]] |
-| Authenticates, then no data at all, dies on DPD timeout | Path MTU to the server below eth0's with PMTUD broken — try `MSS=1300`, see [[Troubleshooting]] |
+| Authenticates, then no data at all, dies on DPD timeout | Check `ip route get <server-ip>`: `dev tun0` means the connection to the server was routed into its own tunnel — an old-image bug, upgrade; via eth0 means path MTU to the server below eth0's with PMTUD broken — try `MSS=1300`, see [[Troubleshooting]] |
 
 ## Capturing traffic
 
