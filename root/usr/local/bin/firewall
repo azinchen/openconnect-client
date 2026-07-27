@@ -124,6 +124,29 @@ EOF
 
     cmd_bootstrap_dns
 
+    # Clamp the MSS of our own control connection to the VPN server. We terminate
+    # that TLS/TCP connection locally, so on a path whose real MTU is below eth0's
+    # - a client-side reduction the interface MTU does not reveal, a remote PMTUD
+    # black hole (VPS), PPPoE - the server's full-size segments are silently
+    # dropped and the tunnel carries no data. (Forwarded LAN traffic is already
+    # clamped to the tunnel MTU in the gateway forward chain.) Unset MSS clamps to
+    # the path MTU (a no-op on plain 1500 links); MSS=<n> forces a hard cap where
+    # PMTUD is broken (e.g. MSS=1300 for a VPS).
+    if [ -n "$tcp_mss" ]; then mss_size="$tcp_mss"; else mss_size="rt mtu"; fi
+    nft delete table inet vpn_mss 2>/dev/null || true
+    nft -f - <<EOF || log_error "[$SCRIPT_NAME] Warning: MSS clamp rules failed to load"
+table inet vpn_mss {
+    chain postrouting {
+        type filter hook postrouting priority mangle; policy accept;
+        oifname "$wan_if" tcp flags syn tcp option maxseg size set $mss_size
+    }
+    chain prerouting {
+        type filter hook prerouting priority mangle; policy accept;
+        iifname "$wan_if" tcp flags syn tcp option maxseg size set $mss_size
+    }
+}
+EOF
+
     log "[$SCRIPT_NAME] Kill switch installed (table inet vpn, policy drop for IPv4 and IPv6)"
 }
 
