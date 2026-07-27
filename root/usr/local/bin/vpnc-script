@@ -51,7 +51,13 @@ protect_server_route() {
     _ogw=$(ip "$_fam" route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}')
     _oif=$(ip "$_fam" route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')
     if [ -n "$_ogw" ]; then
-        ip "$_fam" route replace "$VPNGATEWAY/$_plen" via "$_ogw" dev "$_oif" 2>/dev/null || true
+        # `onlink`: the default gateway is by definition directly reachable on
+        # its interface, but the kernel refuses the nexthop ("invalid gateway")
+        # when the uplink subnet is published as a gatewayed route rather than a
+        # connected one (e.g. a Docker network whose return route is installed
+        # as `<subnet> via <gw>`). onlink asserts reachability and is always
+        # correct for a gateway taken from the default route.
+        ip "$_fam" route replace "$VPNGATEWAY/$_plen" via "$_ogw" dev "$_oif" onlink 2>/dev/null || true
     elif [ -n "$_oif" ]; then
         # On-link default with no gateway (e.g. a point-to-point uplink)
         ip "$_fam" route replace "$VPNGATEWAY/$_plen" dev "$_oif" 2>/dev/null || true
