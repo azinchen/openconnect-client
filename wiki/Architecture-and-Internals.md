@@ -21,7 +21,7 @@ svc-openconnect (longrun)  resolve → update endpoint sets → connect   ← af
 | Path | Role |
 |---|---|
 | `/usr/local/bin/backend-functions` | env parsing, URL grammar, logging, shared helpers — sourced by everything |
-| `/usr/local/bin/firewall` | `install` / `bootstrap-dns` / `set-endpoints` / `post-connect` — all set changes are single-transaction (atomic) |
+| `/usr/local/bin/firewall` | `install` / `bootstrap-dns` / `set-endpoints` / `post-connect` — all set changes are single-transaction (atomic). `install` also loads the control-connection MSS clamp (`inet vpn_mss`, see [[Security Model]]) |
 | `/usr/local/bin/gateway` | `setup` (forward/NAT/DNS-interception rules) and `dns-update` (re-point the redirect DNAT on reconnect) |
 | `/usr/local/bin/vpnc-script` | custom, container-aware vpnc-script (below) |
 | `/usr/local/bin/healthcheck` | Docker HEALTHCHECK probe — see [[Automatic Reconnection]] |

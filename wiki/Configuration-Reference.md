@@ -11,6 +11,7 @@ All configuration is via environment variables. Boolean flags accept `true`/`1`;
 | `PROTOCOL` | `anyconnect` | `anyconnect` \| `gp` \| `pulse` \| `fortinet` \| `nc` \| `array` — see [[Protocols]] |
 | `DTLS` | `on` | `off` disables the UDP data channel (`--no-dtls`). DTLS uses the URL's port |
 | `MTU` | auto | Override the tun MTU (otherwise the server-provided value, falling back to 1406) |
+| `MSS` | _(unset)_ | Clamp the TCP MSS of the container's **own** control connection to the server. Unset: clamp the outbound SYN to the path MTU — a no-op on plain 1500 links. A number (e.g. `1300`): hard cap in both directions, for paths whose real MTU is below eth0's *and* PMTUD is broken (remote black hole on a VPS, PPPoE, tunnelled uplinks) — the symptom is a session that authenticates but carries no data and dies on DPD timeout. Forwarded gateway-client traffic is always clamped to the tunnel MTU regardless — see [[Gateway Mode]] |
 | `SPLIT_TUNNEL` | `false` | Honor server-pushed split routes instead of forcing full-tunnel |
 | `OPENCONNECT_OPTS` | — | Extra raw `openconnect` arguments, appended verbatim — the escape hatch for niche flags |
 

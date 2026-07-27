@@ -104,6 +104,7 @@ like any environment variable it remains visible in `docker inspect`).
 | `INSECURE` | `false` | Skip server verification (loudly logged, unsafe) |
 | `DTLS` | `on` | UDP data channel toggle (uses the URL's port) |
 | `MTU` | auto | Override tun MTU |
+| `MSS` | _(unset)_ | Clamp the MSS of the control connection to the VPN server. Unset clamps to the path MTU (a no-op on plain 1500 links). Set a number (e.g. `1300`) to force a hard cap when the path to the server has a smaller MTU than `eth0` and PMTUD is broken — a remote black hole (VPS), PPPoE, tunnelled uplinks — where full-size segments would otherwise be silently dropped and the tunnel would carry no data. (Forwarded LAN traffic is always clamped to the tunnel MTU.) |
 | `SPLIT_TUNNEL` | `false` | Honor server-pushed split routes instead of forcing full-tunnel |
 | `IPV6_MODE` | `auto` | Tunnel IPv6 data plane: `auto` (use if pushed, never leak) \| `require` (reconnect until dual-stack) \| `off` |
 | `NETWORK` / `NETWORK6` | — | `;`-list of LAN CIDRs allowed to reach the container via eth0 (return routes + firewall) |

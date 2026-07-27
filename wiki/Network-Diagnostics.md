@@ -71,6 +71,7 @@ cat /run/openconnect-client/failures           # consecutive failure count
 | resolv.conf shows tunnel DNS while disconnected | Only transiently, during openconnect's internal reconnect window; a full service restart restores bootstrap DNS |
 | `curl --interface eth0` succeeds | Kill switch not active — the container was started without `NET_ADMIN`, or the table was flushed manually |
 | Big transfers stall, small requests fine | MTU — try `MTU=1300`, see [[Troubleshooting]] |
+| Authenticates, then no data at all, dies on DPD timeout | Path MTU to the server below eth0's with PMTUD broken — try `MSS=1300`, see [[Troubleshooting]] |
 
 ## Capturing traffic
 
