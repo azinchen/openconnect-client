@@ -30,7 +30,8 @@ The init oneshots fail fast on purpose:
 1. `docker exec vpn ip route` — expect `0.0.0.0/1` and `128.0.0.0/1` via `tun0`. Missing → check the log for `[vpnc]` errors.
 2. `docker exec vpn curl -s https://api.ipify.org` — works? Then the tunnel is fine and the problem is app wiring ([[Shared Network Mode]] / [[Gateway Mode]]).
 3. Works for small requests but big transfers stall → MTU. Try `MTU=1300`; gateway clients additionally rely on the built-in MSS clamp.
-4. Tunnel works but a *forwarded* client doesn't → on the server side, the VPN subnet must be NATed/routed. For ocserv-server: its `VPN_SUBNET` must match the pool in `ocserv.conf`.
+4. Authenticates fine but **nothing** flows at all — not even small requests — and the session dies on DPD timeout → the path to the *server* has a smaller MTU than eth0 (VPS with a PMTUD black hole, PPPoE, tunnelled uplink) and the server's full-size TLS segments are dropped before they reach the container. Set `MSS=1300` to hard-cap the control connection's segment size (`MTU` won't help here — it only affects the tun interface, not the TCP session that carries it).
+5. Tunnel works but a *forwarded* client doesn't → on the server side, the VPN subnet must be NATed/routed. For ocserv-server: its `VPN_SUBNET` must match the pool in `ocserv.conf`.
 
 ## DTLS
 

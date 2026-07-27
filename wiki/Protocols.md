@@ -35,6 +35,8 @@ openconnect is built from source with GnuTLS and a trimmed feature set (rational
 
 `MTU` overrides the tun interface MTU. Without it, the server-provided value is used (falling back to 1406). Lower it if you see stalls on large transfers — see [[Troubleshooting]].
 
+`MSS` is the companion knob for the **control connection itself**: when the path to the server has a smaller MTU than eth0 and PMTUD is broken, the session authenticates but carries no data — set `MSS=1300` there. `MTU` cannot fix that case (it shapes traffic inside the tunnel, not the TCP session carrying it).
+
 ## Fixed behavior
 
 A few openconnect flags are set by the image and not configurable, because the surrounding machinery depends on them:

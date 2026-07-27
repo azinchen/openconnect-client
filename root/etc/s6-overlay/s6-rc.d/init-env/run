@@ -101,6 +101,15 @@ case "$reconnect_delay" in
     ''|*[!0-9]*) fatal "RECONNECT_DELAY must be a number of seconds (got '$reconnect_delay')" ;;
 esac
 
+if [ -n "$tcp_mss" ]; then
+    case "$tcp_mss" in
+        *[!0-9]*) fatal "MSS must be a number of bytes (got '$tcp_mss')" ;;
+    esac
+    if [ "$tcp_mss" -lt 536 ] || [ "$tcp_mss" -gt 65535 ]; then
+        fatal "MSS must be between 536 and 65535 (got '$tcp_mss')"
+    fi
+fi
+
 # ---- Authentication --------------------------------------------------------
 auth_mode=""
 if [ -n "$auth_pass_file" ] && [ ! -r "$auth_pass_file" ]; then
