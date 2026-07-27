@@ -22,7 +22,7 @@ When enabled, the gateway machinery is added to the same fail-closed nftables ta
 - **NAT**: IPv4 masquerade to the tunnel address. IPv6 is masqueraded too by default (**NAT66**), because ocserv assigns a single client address and won't route a delegated prefix; set `GATEWAY_NAT6=false` if your server does route the client subnet.
 - **DNS interception** per `GATEWAY_DNS` — see [[Gateway DNS]].
 
-`GATEWAY_NETWORK`/`GATEWAY_NETWORK6` define which **source** CIDRs may use the gateway. Unset, they default to the container's own eth0 subnets — sensible zero-config for "route my compose network".
+`FORWARD_FROM`/`FORWARD_FROM6` define which **source** CIDRs may use the gateway. Unset, they default to the container's own eth0 subnets — sensible zero-config for "route my compose network".
 
 ## Client-side wiring
 
@@ -60,8 +60,8 @@ services:
       - PASS_FILE=/run/secrets/vpn_pass
       - CA_FILE=/openconnect-client/ca.pem
       - GATEWAY_MODE=true
-      - GATEWAY_NETWORK=192.168.1.0/24
-      - GATEWAY_NETWORK6=fd00:home::/64
+      - FORWARD_FROM=192.168.1.0/24
+      - FORWARD_FROM6=fd00:home::/64
       - NETWORK=192.168.1.0/24        # LAN may reach services in this netns
     networks:
       lan:

@@ -71,8 +71,8 @@ services:
       - CA_FILE=/openconnect-client/ca.pem
       - GATEWAY_MODE=true
       # LAN sources allowed to route through the tunnel
-      - GATEWAY_NETWORK=192.168.1.0/24
-      - GATEWAY_NETWORK6=fd00:home::/64
+      - FORWARD_FROM=192.168.1.0/24
+      - FORWARD_FROM6=fd00:home::/64
       # Hand intercepted client DNS to the co-located AdGuard below
       - GATEWAY_DNS=local
       # The netns itself (and Mode-A style co-located containers) also

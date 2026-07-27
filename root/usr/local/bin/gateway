@@ -85,13 +85,13 @@ cmd_setup() {
         return 0
     }
 
-    clients4="$(split_list "$gateway_network")"
+    clients4="$(split_list "$forward_from")"
     [ -n "$clients4" ] || clients4="$(eth0_subnets4)"
-    clients6="$(split_list "$gateway_network6")"
+    clients6="$(split_list "$forward_from6")"
     [ -n "$clients6" ] || clients6="$(eth0_subnets6 || true)"
 
     if [ -z "$clients4" ] && [ -z "$clients6" ]; then
-        log_error "[$SCRIPT_NAME] No gateway client networks found (GATEWAY_NETWORK unset and no subnets on $wan_if)"
+        log_error "[$SCRIPT_NAME] No gateway client networks found (FORWARD_FROM unset and no subnets on $wan_if)"
         return 1
     fi
 
