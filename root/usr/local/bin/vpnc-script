@@ -57,10 +57,14 @@ protect_server_route() {
         # connected one (e.g. a Docker network whose return route is installed
         # as `<subnet> via <gw>`). onlink asserts reachability and is always
         # correct for a gateway taken from the default route.
-        ip "$_fam" route replace "$VPNGATEWAY/$_plen" via "$_ogw" dev "$_oif" onlink 2>/dev/null || true
+        ip "$_fam" route replace "$VPNGATEWAY/$_plen" via "$_ogw" dev "$_oif" onlink 2>/dev/null \
+            || log "[vpnc] Warning: failed to pin server route $VPNGATEWAY via $_ogw dev $_oif"
     elif [ -n "$_oif" ]; then
         # On-link default with no gateway (e.g. a point-to-point uplink)
-        ip "$_fam" route replace "$VPNGATEWAY/$_plen" dev "$_oif" 2>/dev/null || true
+        ip "$_fam" route replace "$VPNGATEWAY/$_plen" dev "$_oif" 2>/dev/null \
+            || log "[vpnc] Warning: failed to pin server route $VPNGATEWAY dev $_oif"
+    else
+        log "[vpnc] Warning: no default route found; server route for $VPNGATEWAY not pinned"
     fi
 }
 
