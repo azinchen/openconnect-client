@@ -22,7 +22,7 @@ RUN set -eux && \
         zlib-dev=1.3.2-r0 \
         linux-headers=7.0.0-r1 \
         pkgconf=2.5.1-r0 \
-        curl=8.21.0-r0 \
+        curl=8.22.0-r0 \
         && \
     curl -fsSL "https://www.infradead.org/openconnect/download/openconnect-${OPENCONNECT_VERSION}.tar.gz" -o /tmp/openconnect.tar.gz && \
     tar -C /tmp -xf /tmp/openconnect.tar.gz && \
@@ -59,7 +59,7 @@ RUN echo "**** install security fix packages ****" && \
     echo "**** install mandatory packages ****" && \
     apk --no-cache --no-progress add \
         tar=1.35-r5 \
-        xz=5.8.3-r0 \
+        xz=5.8.4-r0 \
         wget=1.25.0-r3 \
         && \
     echo "**** create folders ****" && \
@@ -136,8 +136,8 @@ RUN apk --no-cache --no-progress add \
     zlib=1.3.2-r0 \
     iproute2-minimal=7.0.0-r0 \
     nftables=1.1.6-r1 \
-    curl=8.21.0-r0 \
-    bind-tools=9.20.26-r0 \
+    curl=8.22.0-r0 \
+    bind-tools=9.20.27-r0 \
     openssl=3.5.8-r0 \
     ca-certificates=20260611-r0 \
     tzdata=2026c-r0
