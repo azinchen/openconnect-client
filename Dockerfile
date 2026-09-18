@@ -139,8 +139,8 @@ RUN apk --no-cache --no-progress add \
     curl=8.22.0-r0 \
     bind-tools=9.20.27-r0 \
     openssl=3.5.8-r0 \
-    ca-certificates=20260611-r0 \
-    tzdata=2026c-r0
+    ca-certificates=20260909-r0 \
+    tzdata=2026d-r0
 
 # One COPY to bring everything in
 COPY --from=rootfs /rootfs/ /
