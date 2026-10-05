@@ -158,6 +158,44 @@ table inet vpn_mss {
 }
 EOF
 
+    # TTL / hop-limit normalization (TTL_SET). Rewrite the TTL and hop-limit
+    # of everything leaving through the tunnel: forwarded gateway clients,
+    # containers sharing this netns and the container's own traffic. The
+    # control connection to the server leaves via eth0 and is untouched.
+    # postrouting runs after the kernel's forward decrement, so the server
+    # sees exactly TTL_SET regardless of how many hops the packet crossed
+    # before - and every traceroute probe that survives this node leaves with
+    # a fresh TTL and reaches the destination, so all hops behind it collapse
+    # out of a client trace. Like the MSS clamp it lives outside inet vpn: it
+    # only rewrites a header field and cannot accept traffic the kill switch
+    # drops. A packet looping THROUGH this node would never expire; the
+    # fail-closed forward policy rules that out. Unlike the MSS clamp a load
+    # failure is fatal - an exposed topology is worse than a stopped
+    # container. tun0 is matched by name, so the rule survives reconnects.
+    nft delete table inet vpn_ttl 2>/dev/null || true
+    if [ -n "$ttl_set" ]; then
+        ttl_rules="oifname \"$tun_if\" ip ttl set $ttl_set"
+        ttl_desc="TTL"
+        if [ "$ipv6_mode" != "off" ]; then
+            ttl_rules="$ttl_rules
+        oifname \"$tun_if\" ip6 hoplimit set $ttl_set"
+            ttl_desc="TTL/hop-limit"
+        fi
+        if ! nft -f - <<EOF
+table inet vpn_ttl {
+    chain postrouting {
+        type filter hook postrouting priority mangle; policy accept;
+        $ttl_rules
+    }
+}
+EOF
+        then
+            log_error "[$SCRIPT_NAME] TTL_SET rules failed to load; refusing to start with the topology exposed"
+            return 1
+        fi
+        log "[$SCRIPT_NAME] Setting $ttl_desc to $ttl_set on traffic leaving via $tun_if"
+    fi
+
     log "[$SCRIPT_NAME] Kill switch installed (table inet vpn, policy drop for IPv4 and IPv6)"
 }
 

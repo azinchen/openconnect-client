@@ -87,6 +87,50 @@ The full example, including a co-located AdGuard Home, is in [[Docker Compose Ex
 
 > **macvlan note:** the Docker host itself cannot reach a macvlan container over the parent interface — that's a macvlan property. Test from another LAN device.
 
+## TTL normalization
+
+Every VPN node in a cascade is an IP router: it decrements the TTL and shows up as a distinct `traceroute` hop. With this container routing LAN clients into an [ocserv-server](https://github.com/azinchen/ocserv-server), or sitting behind one as its egress sidecar, a client trace therefore lists every internal hop and private tunnel subnet — the cascade depth is a fingerprint. `TTL_SET` is the knob for it, shared with the sibling [ocserv-server](https://github.com/azinchen/ocserv-server), [nordvpn](https://github.com/azinchen/nordvpn) and [nordvpn-wg](https://github.com/azinchen/nordvpn-wg) images.
+
+`TTL_SET=<n>` makes `firewall install` load a small mangle table (`inet vpn_ttl`) that rewrites the IPv4 TTL (and the IPv6 hop-limit unless `IPV6_MODE=off`) of everything leaving through `tun0` to `n`:
+
+```
+table inet vpn_ttl {
+    chain postrouting {
+        type filter hook postrouting priority mangle; policy accept;
+        oifname "tun0" ip ttl set 64
+        oifname "tun0" ip6 hoplimit set 64
+    }
+}
+```
+
+```yaml
+# terminal egress of a cascade - normalize the value the VPN server sees
+environment:
+  - TTL_SET=64
+```
+
+The rewrite happens in `postrouting`, **after** the kernel's forward decrement and its "TTL expired" check. Two consequences:
+
+- **The container itself stays visible** as a gateway client's first hop (a probe that expires here is answered here, before the rewrite).
+- **Everything behind it disappears.** Every probe that survives this node leaves with a fresh TTL and reaches the destination, so the VPN server, further gates and the internet path all collapse out of the trace: the client sees this gateway, then the destination.
+
+It also normalizes what the server sees regardless of how many hops the packet crossed before reaching this container (each further hop still decrements, so set it on the terminal egress if the destination must see an exact value).
+
+Notes:
+
+- The rule matches **everything** leaving through `tun0`: forwarded gateway clients, containers sharing the network namespace ([[Shared Network Mode]]) and the container's own traffic. A `traceroute` run from any of them shows nothing between this container and the destination — expected, but remember it when debugging; unset the variable to trace the real path.
+- Only the **inner** packet is rewritten. The control connection and the DTLS packets on `eth0` carry the container's own TTL, so this changes what the VPN server and the destination see, not what the network between you and the server sees.
+- Must be an integer `1`–`255`. An invalid value, or a rule the kernel refuses, **aborts container start** with a clear log line rather than silently running with the topology exposed. Unset means no table at all — behavior is byte-identical to before.
+- A packet that loops *through* a rewriting node would never expire. The rule is bound to `tun0` (never "all interfaces") and the forward policy is fail-closed, so such a loop cannot form.
+- Installed once at boot and matched by interface name, so it survives reconnects and failover to another server untouched.
+- `TTL_INC` (hiding *this* node from a trace by cancelling its own decrement) is the same feature's second phase across the cascade images. nftables has no increment expression, so it is not implemented here yet; setting it aborts container start instead of being silently ignored.
+
+Inspect it live:
+
+```bash
+docker exec vpn nft list table inet vpn_ttl
+```
+
 ## Verifying
 
 ```bash
