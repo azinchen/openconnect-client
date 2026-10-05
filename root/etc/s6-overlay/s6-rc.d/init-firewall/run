@@ -20,6 +20,9 @@ log "[$SCRIPT_NAME] Installing kill-switch firewall (nftables, dual family)"
 if [ "$network_diagnostic_enabled" = "true" ]; then
     log "[$SCRIPT_NAME] Ruleset dump (NETWORK_DIAGNOSTIC_ENABLED):"
     nft list table inet vpn
+    if [ -n "$ttl_set" ]; then
+        nft list table inet vpn_ttl
+    fi
 fi
 
 log "[$SCRIPT_NAME] Firewall initialization completed"

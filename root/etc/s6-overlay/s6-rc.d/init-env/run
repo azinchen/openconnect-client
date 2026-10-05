@@ -110,6 +110,20 @@ if [ -n "$tcp_mss" ]; then
     fi
 fi
 
+# TTL_SET takes an integer 1-255. Leading zeros are refused too: nft would
+# read 064 as octal (52).
+if [ -n "$ttl_set" ]; then
+    case "$ttl_set" in
+        *[!0-9]*|0*|????*) fatal "TTL_SET must be an integer 1-255, no leading zeros (got '$ttl_set')" ;;
+    esac
+    [ "$ttl_set" -le 255 ] || fatal "TTL_SET must be an integer 1-255, no leading zeros (got '$ttl_set')"
+fi
+
+# TTL_INC (per-node hop hiding) is reserved for a later phase: nft has no
+# increment expression and it would need the xt TTL/HL compat targets. Refuse
+# it rather than silently ignore it.
+[ -z "$ttl_inc" ] || fatal "TTL_INC is not supported by this image yet (reserved for a later phase); unset it or use TTL_SET"
+
 # ---- Authentication --------------------------------------------------------
 auth_mode=""
 if [ -n "$auth_pass_file" ] && [ ! -r "$auth_pass_file" ]; then
