@@ -1,7 +1,16 @@
 # OpenConnect VPN Client Docker container
 
-[![CI - Build and Deploy](https://github.com/azinchen/openconnect-client/actions/workflows/ci-build-deploy.yml/badge.svg)](https://github.com/azinchen/openconnect-client/actions/workflows/ci-build-deploy.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/azinchen/openconnect-client)](https://hub.docker.com/r/azinchen/openconnect-client)
+[![GitHub release][github-release]][github-releases]
+[![GitHub release date][github-releasedate]][github-releases]
+[![GitHub build][github-build]][github-actions]<br>
+[![GitHub stars][github-stars]][github-link]
+[![GitHub forks][github-forks]][github-link]
+[![Open issues][github-issues]][github-issues-link]
+[![GitHub last commit][github-lastcommit]][github-link]<br>
+[![Docker pulls][dockerhub-pulls]][dockerhub-link]
+[![Docker stars][dockerhub-stars]][dockerhub-link]
+[![Docker image size][dockerhub-size]][dockerhub-link]<br>
+[![Multi-arch][multiarch-badge]][dockerhub-link]
 
 OpenConnect VPN client in a Docker container that routes other containers'
 traffic through an ocserv / Cisco AnyConnect-compatible server, with a
@@ -214,3 +223,23 @@ autoheal-style restarter to recycle an unhealthy container.
 ## 📄 License
 
 [MIT](LICENSE)
+
+<!-- Links: GitHub -->
+[github-release]: https://img.shields.io/github/v/release/azinchen/openconnect-client?logo=github&logoColor=white
+[github-releasedate]: https://img.shields.io/github/release-date/azinchen/openconnect-client?logo=github&logoColor=white
+[github-releases]: https://github.com/azinchen/openconnect-client/releases
+[github-build]: https://img.shields.io/github/actions/workflow/status/azinchen/openconnect-client/ci-build-deploy.yml?branch=main&label=build&logo=github&logoColor=white
+[github-actions]: https://github.com/azinchen/openconnect-client/actions/workflows/ci-build-deploy.yml
+[github-stars]: https://img.shields.io/github/stars/azinchen/openconnect-client?style=flat-square&logo=github&logoColor=white
+[github-forks]: https://img.shields.io/github/forks/azinchen/openconnect-client?style=flat-square&logo=github&logoColor=white
+[github-issues]: https://img.shields.io/github/issues/azinchen/openconnect-client?logo=github&logoColor=white
+[github-issues-link]: https://github.com/azinchen/openconnect-client/issues
+[github-lastcommit]: https://img.shields.io/github/last-commit/azinchen/openconnect-client?logo=github&logoColor=white
+[github-link]: https://github.com/azinchen/openconnect-client
+
+<!-- Links: Docker Hub -->
+[dockerhub-pulls]: https://img.shields.io/docker/pulls/azinchen/openconnect-client?logo=docker&logoColor=white
+[dockerhub-stars]: https://img.shields.io/docker/stars/azinchen/openconnect-client?logo=docker&logoColor=white
+[dockerhub-size]: https://img.shields.io/docker/image-size/azinchen/openconnect-client/latest?logo=docker&logoColor=white
+[dockerhub-link]: https://hub.docker.com/r/azinchen/openconnect-client
+[multiarch-badge]: https://img.shields.io/badge/multi--arch-386%20%7C%20amd64%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm64%20%7C%20riscv64-blue?logo=docker&logoColor=white
