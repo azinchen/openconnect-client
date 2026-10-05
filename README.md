@@ -21,8 +21,7 @@ configuration style, and a "route other containers through
 client it also connects to GlobalProtect, Pulse/Ivanti, Fortinet and other
 servers via `PROTOCOL`.
 
-Full documentation lives in the
-[project wiki](https://github.com/azinchen/openconnect-client/wiki).
+Full documentation lives in the [project wiki][wiki-home].
 
 ## ✨ Features
 
@@ -77,9 +76,8 @@ services:
 ```
 
 Everything the `app` container sends now goes through the tunnel — or
-nowhere. See the wiki's
-[Docker Compose Examples](https://github.com/azinchen/openconnect-client/wiki/Docker-Compose-Examples)
-for complete compositions of both modes.
+nowhere. See the wiki's [Docker Compose Examples][wiki-compose] for complete
+compositions of both modes.
 
 ## 🔗 Connection URL
 
@@ -101,35 +99,86 @@ like any environment variable it remains visible in `docker inspect`).
 
 ## ⚙️ Environment variables
 
+Grouped by feature; every variable is one line here — the
+**[Configuration Reference][wiki-config]** has the full descriptions.
+
+### Connection — [details][wiki-url]
+
 | Variable | Default | Description |
 |---|---|---|
-| `URL` | — (required) | `https://host[:port][/][?camouflage_secret]`; bare host accepted; `;`-list for ordered failover |
-| `CONNECT_FAMILY` | `auto` | Control-channel address family: `auto` \| `ipv4` \| `ipv6`. `auto` prefers IPv6 when eth0 has a global IPv6 route |
-| `PROTOCOL` | `anyconnect` | openconnect protocol: `anyconnect` \| `gp` \| `pulse` \| `fortinet` \| `nc` \| `array` |
-| `USER` / `PASS` / `PASS_FILE` | — | Password auth (`PASS_FILE` for Docker secrets) |
-| `CERT_FILE` / `KEY_FILE` / `CERT_PASS` | — | Certificate auth (`.p12`/`.pfx`, or PEM cert+key pair) |
-| `CA_FILE` | — | CA certificate to trust (preferred for self-hosted servers) |
-| `SERVERCERT` | — | `pin-sha256:...` server certificate pin |
-| `INSECURE` | `false` | Skip server verification (loudly logged, unsafe) |
-| `DTLS` | `on` | UDP data channel toggle (uses the URL's port) |
-| `MTU` | auto | Override tun MTU |
-| `MSS` | _(unset)_ | Clamp the MSS of the control connection to the VPN server. Unset clamps to the path MTU (a no-op on plain 1500 links). Set a number (e.g. `1300`) to force a hard cap when the path to the server has a smaller MTU than `eth0` and PMTUD is broken — a remote black hole (VPS), PPPoE, tunnelled uplinks — where full-size segments would otherwise be silently dropped and the tunnel would carry no data. (Forwarded LAN traffic is always clamped to the tunnel MTU.) |
-| `TTL_SET` | _(unset)_ | Rewrite the TTL/hop-limit of traffic leaving through the tunnel (e.g. `64`); normalizes the value the server sees and hides every hop behind this container from client traceroutes. Integer `1`–`255` |
-| `SPLIT_TUNNEL` | `false` | Honor server-pushed split routes instead of forcing full-tunnel |
-| `IPV6_MODE` | `auto` | Tunnel IPv6 data plane: `auto` (use if pushed, never leak) \| `require` (reconnect until dual-stack) \| `off` |
-| `NETWORK` / `NETWORK6` | — | `;`-list of LAN CIDRs allowed to reach the container via eth0 (return routes + firewall) |
-| `GATEWAY_MODE` | `false` | Enable forwarding/NAT gateway for other-netns clients |
-| `FORWARD_FROM` / `FORWARD_FROM6` | eth0 subnets | Source CIDRs allowed to use the gateway |
-| `GATEWAY_NAT6` | `true` | NAT66 masquerade (default) vs pure IPv6 routing |
-| `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` (DNAT port 53 to the tunnel-pushed resolvers) \| `local` (DNAT port 53 to this container, for a co-located resolver) \| `forward` (DNAT port 53 to an external resolver reached directly over eth0, e.g. a LAN AdGuard — set `GATEWAY_DNS_SERVER`) \| `off` |
-| `GATEWAY_DNS_SERVER` | — | External resolver IP(s) for `GATEWAY_DNS=forward` (`;`-list, one IPv4 and/or one IPv6). Reached directly, **not** through the tunnel |
-| `DNS` | pushed | Override DNS servers (`;`-list, IPv4/IPv6 mixed; `127.0.0.1` to use a co-located resolver for the netns itself) |
-| `RECONNECT_DELAY` | `5` | Base delay between reconnect attempts (exponential backoff, capped at 300s) |
-| `HEALTH_CHECK_ENABLED` | `false` | Enable the Docker HEALTHCHECK probe |
-| `CHECK_CONNECTION_URL` | `https://www.google.com` | Probe URL(s), probed through the tunnel |
-| `OPENCONNECT_OPTS` | — | Extra raw openconnect arguments |
-| `TZ` | — | Container time zone |
-| `NETWORK_DIAGNOSTIC_ENABLED` | `false` | Verbose route/nft dumps after connect |
+| `URL` | — (required) | `https://host[:port][/][?camouflage_secret]`; bare host accepted; `;`-list for ordered failover. |
+| `CONNECT_FAMILY` | `auto` | Control-channel address family: `auto` \| `ipv4` \| `ipv6`. `auto` prefers IPv6 when eth0 has a global IPv6 route. |
+| `PROTOCOL` | `anyconnect` | openconnect protocol: `anyconnect` \| `gp` \| `pulse` \| `fortinet` \| `nc` \| `array` ([details][wiki-protocols]). |
+| `DTLS` | `on` | `off` disables the UDP data channel (it uses the URL's port). |
+| `SPLIT_TUNNEL` | `false` | Honor server-pushed split routes instead of forcing full-tunnel. |
+| `OPENCONNECT_OPTS` | — | Extra raw `openconnect` arguments, appended verbatim. |
+
+### Authentication and server trust — [details][wiki-auth]
+
+| Variable | Default | Description |
+|---|---|---|
+| `USER` | — | Username for password auth. |
+| `PASS` | — | Password; piped to openconnect on stdin, never on the command line. |
+| `PASS_FILE` | — | Read the password from a file (Docker secret); `PASS` wins if both are set. |
+| `CERT_FILE` | — | Client certificate: a `.p12`/`.pfx` bundle, or a PEM certificate with `KEY_FILE`. |
+| `KEY_FILE` | — | PEM private key when `CERT_FILE` is a PEM certificate. |
+| `CERT_PASS` | — | Passphrase for the key or bundle. |
+| `CA_FILE` | — | CA certificate to trust (preferred for self-hosted servers). |
+| `SERVERCERT` | — | `pin-sha256:...` server certificate pin — no CA file needed. |
+| `INSECURE` | `false` | Skip server certificate verification (loudly logged, unsafe). |
+
+### Tunnel tuning
+
+| Variable | Default | Description |
+|---|---|---|
+| `MTU` | _(auto)_ | Override the tun MTU; otherwise the server-provided value is used ([details][wiki-protocols]). |
+| `MSS` | _(unset)_ | Hard-cap the TCP MSS of the control connection to the server (e.g. `1300`) when the path MTU is small and PMTUD is broken; unset clamps to the path MTU. |
+| `TTL_SET` | _(unset)_ | Rewrite the TTL/hop-limit of traffic leaving through the tunnel (e.g. `64`); hides every hop behind this container from client traceroutes ([details][wiki-ttl]). |
+
+### IPv6 — [details][wiki-ipv6]
+
+| Variable | Default | Description |
+|---|---|---|
+| `IPV6_MODE` | `auto` | Tunnel IPv6 data plane: `auto` (use if pushed, never leak) \| `require` (reconnect until dual-stack) \| `off`. |
+
+### Local network access — [details][wiki-lan]
+
+| Variable | Default | Description |
+|---|---|---|
+| `NETWORK` | — | `;`-list of IPv4 LAN CIDRs allowed to reach the container via eth0 (return routes + firewall). |
+| `NETWORK6` | — | Same for IPv6 CIDRs. |
+
+### Gateway mode — [details][wiki-gateway]
+
+| Variable | Default | Description |
+|---|---|---|
+| `GATEWAY_MODE` | `false` | Act as a forwarding/NAT gateway for other-netns containers and LAN hosts. |
+| `FORWARD_FROM` | eth0 subnets | `;`-list of IPv4 source CIDRs allowed to use the gateway. |
+| `FORWARD_FROM6` | eth0 subnets | Same for IPv6. |
+| `GATEWAY_NAT6` | `true` | Masquerade IPv6 (NAT66); `false` for pure routing when the server routes the client subnet. |
+| `GATEWAY_DNS` | `redirect` | Gateway-client DNS interception: `redirect` \| `local` \| `forward` \| `off` ([details][wiki-gateway-dns]). |
+| `GATEWAY_DNS_SERVER` | — | External resolver IP(s) for `GATEWAY_DNS=forward` (one IPv4 and/or one IPv6); reached directly, **not** through the tunnel. |
+
+### DNS
+
+| Variable | Default | Description |
+|---|---|---|
+| `DNS` | server-pushed | Override the DNS servers (`;`-list, IPv4/IPv6 mixed); `127.0.0.1` uses a co-located resolver. |
+
+### Reconnection and health — [details][wiki-reconnect]
+
+| Variable | Default | Description |
+|---|---|---|
+| `RECONNECT_DELAY` | `5` | Base delay in seconds between reconnect attempts (exponential backoff, capped at 300 s). |
+| `HEALTH_CHECK_ENABLED` | `false` | `true` = the Docker `HEALTHCHECK` probes the tunnel instead of always reporting healthy. |
+| `CHECK_CONNECTION_URL` | `https://www.google.com` | Probe URL(s), `;`-separated, requested through the tunnel. |
+
+### Diagnostics and miscellaneous — [details][wiki-diagnostics]
+
+| Variable | Default | Description |
+|---|---|---|
+| `NETWORK_DIAGNOSTIC_ENABLED` | `false` | Dump addresses, routes and the nftables ruleset after firewall install and connect. |
+| `TZ` | UTC | Container time zone (e.g. `Europe/Amsterdam`); affects log timestamps. |
 
 ## 🔐 Authentication and server trust
 
@@ -184,7 +233,7 @@ default because ocserv assigns a single client address; set
   co-located in `network_mode: service:vpn`. The resolver's upstream
   traffic follows the tunnel and the kill switch automatically. This is the
   recommended setup for full-time gateway use — see the wiki's
-  [Docker Compose Examples](https://github.com/azinchen/openconnect-client/wiki/Docker-Compose-Examples).
+  [Docker Compose Examples][wiki-compose].
 - `forward` — **all** client port-53 traffic is DNAT-ed to an external
   resolver (`GATEWAY_DNS_SERVER`, e.g. an AdGuard Home on the LAN) reached
   directly over eth0, **not** through the tunnel.
@@ -244,3 +293,18 @@ autoheal-style restarter to recycle an unhealthy container.
 [dockerhub-size]: https://img.shields.io/docker/image-size/azinchen/openconnect-client/latest?logo=docker&logoColor=white
 [dockerhub-link]: https://hub.docker.com/r/azinchen/openconnect-client
 [multiarch-badge]: https://img.shields.io/badge/multi--arch-386%20%7C%20amd64%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm64%20%7C%20riscv64-blue?logo=docker&logoColor=white
+
+<!-- Links: Wiki -->
+[wiki-home]: https://github.com/azinchen/openconnect-client/wiki
+[wiki-config]: https://github.com/azinchen/openconnect-client/wiki/Configuration-Reference
+[wiki-url]: https://github.com/azinchen/openconnect-client/wiki/Connection-URL
+[wiki-protocols]: https://github.com/azinchen/openconnect-client/wiki/Protocols
+[wiki-auth]: https://github.com/azinchen/openconnect-client/wiki/Authentication
+[wiki-ipv6]: https://github.com/azinchen/openconnect-client/wiki/IPv6-Configuration
+[wiki-lan]: https://github.com/azinchen/openconnect-client/wiki/Local-Network-Access
+[wiki-gateway]: https://github.com/azinchen/openconnect-client/wiki/Gateway-Mode
+[wiki-gateway-dns]: https://github.com/azinchen/openconnect-client/wiki/Gateway-DNS
+[wiki-ttl]: https://github.com/azinchen/openconnect-client/wiki/Gateway-Mode#ttl-normalization
+[wiki-reconnect]: https://github.com/azinchen/openconnect-client/wiki/Automatic-Reconnection
+[wiki-diagnostics]: https://github.com/azinchen/openconnect-client/wiki/Network-Diagnostics
+[wiki-compose]: https://github.com/azinchen/openconnect-client/wiki/Docker-Compose-Examples
