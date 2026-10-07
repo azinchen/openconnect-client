@@ -19,7 +19,7 @@ RUN set -eux && \
         gnutls-dev=3.8.13-r0 \
         libxml2-dev=2.13.9-r2 \
         lz4-dev=1.10.0-r1 \
-        zlib-dev=1.3.2-r0 \
+        zlib-dev=1.3.2-r1 \
         linux-headers=7.0.0-r1 \
         pkgconf=2.5.1-r0 \
         curl=8.22.0-r0 \
@@ -133,14 +133,14 @@ RUN apk --no-cache --no-progress add \
     gnutls=3.8.13-r0 \
     libxml2=2.13.9-r2 \
     lz4-libs=1.10.0-r1 \
-    zlib=1.3.2-r0 \
+    zlib=1.3.2-r1 \
     iproute2-minimal=7.0.0-r0 \
     nftables=1.1.6-r1 \
     curl=8.22.0-r0 \
     bind-tools=9.20.29-r0 \
     openssl=3.5.9-r0 \
     ca-certificates=20260909-r0 \
-    tzdata=2026d-r0
+    tzdata=2026e-r0
 
 # One COPY to bring everything in
 COPY --from=rootfs /rootfs/ /
