@@ -25,26 +25,21 @@ Full documentation lives in the [project wiki][wiki-home].
 
 ## ✨ Features
 
-- 🔗 **Shared-netns forwarding** — containers started with
-  `network_mode: service:vpn` transparently send all traffic through the
-  tunnel.
-- 🌍 **Gateway mode** — the container can act as a NAT gateway for other
-  containers on the same Docker network and for LAN hosts (macvlan/routed
-  setups), with daemon-free DNS interception for the clients (pure
-  nftables DNAT — no resolver process in the image).
-- 🌐 **Full dual-stack IPv4 + IPv6** — connect to the server over IPv4 or IPv6,
-  accept both an IPv4 and an IPv6 address from the server, route and firewall
-  both families.
-- 🔒 **Fail-closed kill switch** — a single nftables `inet` table drops both
-  address families by default; only the VPN endpoint itself and explicitly
-  whitelisted local networks may leave via `eth0`. The firewall is installed
-  before openconnect is allowed to start and is never removed on disconnect.
-- 🔁 **Ordered failover** — `URL` accepts a `;`-separated server list; the
-  client advances to the next entry after repeated failures.
-- 🕵️ **Camouflage support** — append the ocserv camouflage secret to the URL
-  (`https://host:port/?secret`); it is redacted in all log output.
-- 🛠️ **Operational conveniences** — supervised reconnect with backoff, optional
-  Docker HEALTHCHECK, LAN return routes, small multi-arch Alpine image.
+- 🔗 **Shared-netns forwarding** — `network_mode: service:vpn` sends all of a container's traffic through the tunnel ([details][wiki-shared])
+- 🚪 **Gateway mode** — NAT gateway for other containers and LAN hosts (macvlan / routed setups) ([details][wiki-gateway])
+- 🧭 **Daemon-free gateway DNS** — client DNS intercepted with pure nftables DNAT, no resolver process in the image ([details][wiki-gateway-dns])
+- 🌐 **Full dual-stack** — connect over IPv4 or IPv6, accept both addresses from the server, route and firewall both ([details][wiki-ipv6])
+- 🛡️ **Fail-closed kill switch** — one nftables `inet` table, installed before openconnect starts, never removed ([details][wiki-security])
+- 🔁 **Ordered failover** — `;`-separated server list in `URL`; advances to the next entry after repeated failures ([details][wiki-failover])
+- 🕵️ **Camouflage support** — ocserv camouflage secret appended to the URL and redacted from all log output ([details][wiki-camouflage])
+- 🔌 **Multi-protocol** — AnyConnect / ocserv, GlobalProtect, Pulse, Fortinet, Juniper NC and Array via `PROTOCOL` ([details][wiki-protocols])
+- 🔐 **Flexible auth** — password, Docker secret file or client certificate; trust via CA file or public-key pin ([details][wiki-auth])
+- 🔄 **Supervised reconnect** — restart with exponential backoff on top of openconnect's own reconnect ([details][wiki-reconnect])
+- 🩺 **Opt-in health check** — Docker `HEALTHCHECK` probes real egress through the tunnel ([details][wiki-health])
+- 🏠 **LAN access** — `NETWORK` / `NETWORK6` add return routes and firewall holes for local subnets ([details][wiki-lan])
+- 🪜 **TTL normalization** — `TTL_SET` hides every hop behind the container from client traceroutes ([details][wiki-ttl])
+- 🔍 **Network diagnostics** — dump addresses, routes and the nftables ruleset after firewall install and connect ([details][wiki-diagnostics])
+- 📦 **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64 and riscv64 ([details][wiki-build])
 
 ## 🚀 Quick start
 
@@ -308,3 +303,9 @@ autoheal-style restarter to recycle an unhealthy container.
 [wiki-reconnect]: https://github.com/azinchen/openconnect-client/wiki/Automatic-Reconnection
 [wiki-diagnostics]: https://github.com/azinchen/openconnect-client/wiki/Network-Diagnostics
 [wiki-compose]: https://github.com/azinchen/openconnect-client/wiki/Docker-Compose-Examples
+[wiki-shared]: https://github.com/azinchen/openconnect-client/wiki/Shared-Network-Mode
+[wiki-security]: https://github.com/azinchen/openconnect-client/wiki/Security-Model
+[wiki-failover]: https://github.com/azinchen/openconnect-client/wiki/Connection-URL#failover-list
+[wiki-camouflage]: https://github.com/azinchen/openconnect-client/wiki/Connection-URL#camouflage
+[wiki-health]: https://github.com/azinchen/openconnect-client/wiki/Automatic-Reconnection#health-check
+[wiki-build]: https://github.com/azinchen/openconnect-client/wiki/Building-and-CI
