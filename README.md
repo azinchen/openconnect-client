@@ -23,7 +23,7 @@ servers via `PROTOCOL`.
 
 Full documentation lives in the [project wiki][wiki-home].
 
-## ✨ Features
+## ✨ Key Features
 
 - 🔗 **Shared-netns forwarding** — `network_mode: service:vpn` puts a container behind the tunnel ([details][wiki-shared])
 - 🚪 **Gateway mode** — NAT gateway for other containers and LAN hosts (macvlan / routed) ([details][wiki-gateway])
@@ -41,7 +41,7 @@ Full documentation lives in the [project wiki][wiki-home].
 - 🔍 **Network diagnostics** — dump addresses, routes and the nftables ruleset ([details][wiki-diagnostics])
 - 📦 **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64, riscv64 ([details][wiki-build])
 
-## 🚀 Quick start
+## 🚀 Quick Start
 
 ```yaml
 services:
@@ -92,7 +92,7 @@ DTLS; each list entry is a complete URL with its own port and secret. The
 query string is passed to openconnect verbatim and redacted in logs (note:
 like any environment variable it remains visible in `docker inspect`).
 
-## ⚙️ Environment variables
+## ⚙️ Environment Variables
 
 Grouped by feature; every variable is one line here — the
 **[Configuration Reference][wiki-config]** has the full descriptions.
@@ -175,7 +175,7 @@ Grouped by feature; every variable is one line here — the
 | `NETWORK_DIAGNOSTIC_ENABLED` | `false` | Dump addresses, routes and the nftables ruleset after firewall install and connect. |
 | `TZ` | UTC | Container time zone (e.g. `Europe/Amsterdam`); affects log timestamps. |
 
-## 🔐 Authentication and server trust
+## 🔐 Authentication and Server Trust
 
 Mirrors ocserv's auth modes: password (`USER` + `PASS`/`PASS_FILE`, piped via
 `--passwd-on-stdin`), certificate (`CERT_FILE` as `.p12`/`.pfx` with optional
@@ -187,7 +187,7 @@ Server trust, in order of preference: `CA_FILE` (mount the ocserv-server CA),
 `SERVERCERT` (`pin-sha256:` pin for self-signed setups), a publicly valid
 certificate, or the `INSECURE=true` escape hatch.
 
-## 🔀 Traffic modes
+## 🔀 Traffic Modes
 
 ### Mode A — shared network namespace
 
@@ -236,7 +236,7 @@ Connectivity *to* the server over IPv6 additionally needs an IPv6-enabled
 Docker network (`enable_ipv6: true`); the tunnel's IPv6 works regardless
 once the session is up over IPv4.
 
-## 🩺 Health check
+## 🩺 Health Check
 
 The image ships a Docker HEALTHCHECK (60s interval) that is neutral until
 `HEALTH_CHECK_ENABLED=true`. When enabled it verifies the tun interface and
@@ -244,7 +244,7 @@ its addresses, then probes `CHECK_CONNECTION_URL` through the tunnel
 (IPv4, plus IPv6 when `IPV6_MODE=require`). Combine with an
 autoheal-style restarter to recycle an unhealthy container.
 
-## 📋 Runtime requirements
+## 📋 Runtime Requirements
 
 - `--cap-add=NET_ADMIN` and `/dev/net/tun`
 - a kernel with nftables support (any modern host)
