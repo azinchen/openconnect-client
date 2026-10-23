@@ -216,28 +216,13 @@ sysctls:
 default because ocserv assigns a single client address; set
 `GATEWAY_NAT6=false` if your server routes the client subnet.
 
-**Gateway-client DNS** is handled without any daemon in the image, chosen by
-`GATEWAY_DNS`:
-
-- `redirect` (default) — client port-53 traffic is DNAT-ed to the
-  tunnel-pushed resolvers (updated atomically on every reconnect). Queries
-  deliberately aimed at an address inside this netns pass untouched.
-- `local` — **all** client port-53 traffic (including hardcoded public DNS
-  on smart TVs and the like) is DNAT-ed to the container itself, for a
-  full-featured resolver (AdGuard Home, Pi-hole, unbound) running
-  co-located in `network_mode: service:vpn`. The resolver's upstream
-  traffic follows the tunnel and the kill switch automatically. This is the
-  recommended setup for full-time gateway use — see the wiki's
-  [Docker Compose Examples][wiki-compose].
-- `forward` — **all** client port-53 traffic is DNAT-ed to an external
-  resolver (`GATEWAY_DNS_SERVER`, e.g. an AdGuard Home on the LAN) reached
-  directly over eth0, **not** through the tunnel.
-- `off` — no interception; clients use whatever resolver they are
-  configured with, routed through the tunnel like ordinary traffic.
-
-Caveat (all modes): compose containers using Docker's embedded DNS
-(`127.0.0.11`) resolve via the *host*, bypassing the gateway; give such
-clients an explicit `dns:` pointing at a routable IP.
+**Gateway-client DNS** is intercepted without any daemon in the image.
+`GATEWAY_DNS` picks the mode: `redirect` (default) sends client DNS to the
+tunnel-pushed resolvers, `local` to a co-located resolver such as AdGuard Home
+or Pi-hole, `forward` to an external resolver reached directly over eth0, and
+`off` leaves it alone. Containers using Docker's embedded DNS (`127.0.0.11`)
+bypass the gateway; give them an explicit `dns:`. See [Gateway DNS][wiki-gateway-dns]
+for the details of each mode.
 
 ## 🌐 IPv6
 

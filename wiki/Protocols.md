@@ -35,7 +35,7 @@ openconnect is built from source with GnuTLS and a trimmed feature set (rational
 
 `MTU` overrides the tun interface MTU. Without it, the server-provided value is used (falling back to 1406). Lower it if you see stalls on large transfers — see [[Troubleshooting]].
 
-`MSS` is the companion knob for the **control connection itself**: when the path to the server has a smaller MTU than eth0 and PMTUD is broken, the session authenticates but carries no data — set `MSS=1300` there. `MTU` cannot fix that case (it shapes traffic inside the tunnel, not the TCP session carrying it).
+`MSS` is the companion knob for the **control connection itself**. Unset, the outbound SYN is clamped to the path MTU — a no-op on plain 1500 links. A number (e.g. `1300`) hard-caps the MSS in both directions, for paths whose real MTU is below eth0's *and* PMTUD is broken (remote black hole on a VPS, PPPoE, tunnelled uplinks). The symptom is a session that authenticates but carries no data and dies on DPD timeout. `MTU` cannot fix that case (it shapes traffic inside the tunnel, not the TCP session carrying it). Forwarded gateway-client traffic is always clamped to the tunnel MTU regardless — see [[Gateway Mode]].
 
 ## Fixed behavior
 
