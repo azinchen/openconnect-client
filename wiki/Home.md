@@ -8,14 +8,21 @@
 
 ## What you get
 
-- **Fail-closed kill switch** — a single dual-family **nftables** table drops everything by default; the firewall is installed *before* the VPN client may start and is never removed on disconnect
-- **Shared-netns forwarding** — containers started with `network_mode: service:vpn` transparently send all traffic through the tunnel
-- **Gateway mode** — NAT gateway for containers with their own network namespace and for LAN hosts (macvlan/routed setups), with daemon-free DNS interception
-- **Full dual-stack IPv4 + IPv6** — connect over either family, tunnel both, firewall both
-- **Ordered failover** — a `;`-separated server list with automatic advance after repeated failures
-- **Camouflage support** — the ocserv camouflage secret rides in the URL and is redacted in all log output
-- **Supervised reconnect** — exponential backoff, DNS re-resolution and atomic firewall updates on every reconnect
-- **Multi-arch images** published to GHCR (and Docker Hub for releases)
+- **Shared-netns forwarding** — `network_mode: service:vpn` puts a container behind the tunnel ([[Shared Network Mode]])
+- **Gateway mode** — NAT gateway for other containers and LAN hosts (macvlan / routed) ([[Gateway Mode]])
+- **Daemon-free gateway DNS** — client DNS intercepted by nftables DNAT, no resolver process ([[Gateway DNS]])
+- **Full dual-stack** — IPv4 and IPv6 for the connection, the tunnel and the firewall ([[IPv6 Configuration]])
+- **Fail-closed kill switch** — one nftables table, up before openconnect starts, never removed ([[Security Model]])
+- **Ordered failover** — `;`-separated server list in `URL`, next entry after repeated failures ([Connection URL](Connection-URL#failover-list))
+- **Camouflage support** — ocserv camouflage secret in the URL, redacted from logs ([Connection URL](Connection-URL#camouflage))
+- **Multi-protocol** — AnyConnect, GlobalProtect, Pulse, Fortinet, NC and Array via `PROTOCOL` ([[Protocols]])
+- **Flexible auth** — password, secret file or client cert; trust by CA file or pin ([[Authentication]])
+- **Supervised reconnect** — restarts with exponential backoff on top of openconnect's own ([[Automatic Reconnection]])
+- **Opt-in health check** — Docker `HEALTHCHECK` probes real egress through the tunnel ([Automatic Reconnection](Automatic-Reconnection#health-check))
+- **LAN access** — `NETWORK` / `NETWORK6` add return routes and firewall holes ([[Local Network Access]])
+- **TTL normalization** — `TTL_SET` hides the hops behind the container from traceroutes ([Gateway Mode](Gateway-Mode#ttl-normalization))
+- **Network diagnostics** — dump addresses, routes and the nftables ruleset ([[Network Diagnostics]])
+- **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64, riscv64 ([[Building and CI]])
 
 ---
 
@@ -24,6 +31,7 @@
 | If you want to… | Go to |
 |---|---|
 | Get connected in 5 minutes | **[[Getting Started]]** |
+| Copy a complete compose stack for either mode | **[[Docker Compose Examples]]** |
 | Understand every env var | **[[Configuration Reference]]** |
 | Learn the URL syntax, camouflage, failover | **[[Connection URL]]** |
 | Set up passwords, certificates, server trust | **[[Authentication]]** |
