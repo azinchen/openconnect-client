@@ -25,21 +25,21 @@ Full documentation lives in the [project wiki][wiki-home].
 
 ## ✨ Features
 
-- 🔗 **Shared-netns forwarding** — `network_mode: service:vpn` sends all of a container's traffic through the tunnel ([details][wiki-shared])
-- 🚪 **Gateway mode** — NAT gateway for other containers and LAN hosts (macvlan / routed setups) ([details][wiki-gateway])
-- 🧭 **Daemon-free gateway DNS** — client DNS intercepted with pure nftables DNAT, no resolver process in the image ([details][wiki-gateway-dns])
-- 🌐 **Full dual-stack** — connect over IPv4 or IPv6, accept both addresses from the server, route and firewall both ([details][wiki-ipv6])
-- 🛡️ **Fail-closed kill switch** — one nftables `inet` table, installed before openconnect starts, never removed ([details][wiki-security])
-- 🔁 **Ordered failover** — `;`-separated server list in `URL`; advances to the next entry after repeated failures ([details][wiki-failover])
-- 🕵️ **Camouflage support** — ocserv camouflage secret appended to the URL and redacted from all log output ([details][wiki-camouflage])
-- 🔌 **Multi-protocol** — AnyConnect / ocserv, GlobalProtect, Pulse, Fortinet, Juniper NC and Array via `PROTOCOL` ([details][wiki-protocols])
-- 🔐 **Flexible auth** — password, Docker secret file or client certificate; trust via CA file or public-key pin ([details][wiki-auth])
-- 🔄 **Supervised reconnect** — restart with exponential backoff on top of openconnect's own reconnect ([details][wiki-reconnect])
+- 🔗 **Shared-netns forwarding** — `network_mode: service:vpn` puts a container behind the tunnel ([details][wiki-shared])
+- 🚪 **Gateway mode** — NAT gateway for other containers and LAN hosts (macvlan / routed) ([details][wiki-gateway])
+- 🧭 **Daemon-free gateway DNS** — client DNS intercepted by nftables DNAT, no resolver process ([details][wiki-gateway-dns])
+- 🌐 **Full dual-stack** — IPv4 and IPv6 for the connection, the tunnel and the firewall ([details][wiki-ipv6])
+- 🛡️ **Fail-closed kill switch** — one nftables table, up before openconnect starts, never removed ([details][wiki-security])
+- 🔁 **Ordered failover** — `;`-separated server list in `URL`, next entry after repeated failures ([details][wiki-failover])
+- 🕵️ **Camouflage support** — ocserv camouflage secret in the URL, redacted from logs ([details][wiki-camouflage])
+- 🔌 **Multi-protocol** — AnyConnect, GlobalProtect, Pulse, Fortinet, NC and Array via `PROTOCOL` ([details][wiki-protocols])
+- 🔐 **Flexible auth** — password, secret file or client cert; trust by CA file or pin ([details][wiki-auth])
+- 🔄 **Supervised reconnect** — restarts with exponential backoff on top of openconnect's own ([details][wiki-reconnect])
 - 🩺 **Opt-in health check** — Docker `HEALTHCHECK` probes real egress through the tunnel ([details][wiki-health])
-- 🏠 **LAN access** — `NETWORK` / `NETWORK6` add return routes and firewall holes for local subnets ([details][wiki-lan])
-- 🪜 **TTL normalization** — `TTL_SET` hides every hop behind the container from client traceroutes ([details][wiki-ttl])
-- 🔍 **Network diagnostics** — dump addresses, routes and the nftables ruleset after firewall install and connect ([details][wiki-diagnostics])
-- 📦 **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64 and riscv64 ([details][wiki-build])
+- 🏠 **LAN access** — `NETWORK` / `NETWORK6` add return routes and firewall holes ([details][wiki-lan])
+- 🪜 **TTL normalization** — `TTL_SET` hides the hops behind the container from traceroutes ([details][wiki-ttl])
+- 🔍 **Network diagnostics** — dump addresses, routes and the nftables ruleset ([details][wiki-diagnostics])
+- 📦 **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64, riscv64 ([details][wiki-build])
 
 ## 🚀 Quick start
 
