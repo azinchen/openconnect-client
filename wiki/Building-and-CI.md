@@ -87,7 +87,7 @@ Example sequence: `9.21-0`, `9.21-1`, `9.21-2`, then after the bot bumps opencon
 The format lives at [`.github/RELEASE_TEMPLATE.md`](https://github.com/azinchen/openconnect-client/blob/main/.github/RELEASE_TEMPLATE.md). Structure (matching the ocserv-server releases):
 
 - a one-or-two-sentence summary of why to upgrade — security updates lead with **"Security update — upgrading is recommended."**;
-- **📥 Pull this release** — the two `docker pull` lines;
+- **📥 Pull this release** — the two `docker pull` lines and the multi-arch line;
 - **⬆️ Upgrade notes** — required actions or behavior changes, or "No action required";
 - **✨ Features / 🐛 Fixes / 📦 Package Updates / 📖 Documentation / 🔧 CI/CD Updates** — hand-written, user-facing entries with PR references; package security bumps link their CVEs;
 - **🧩 Component versions** — OpenConnect (GnuTLS build), Alpine Linux, s6-overlay;

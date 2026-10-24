@@ -14,6 +14,11 @@ can be used to seed the categorized sections with the merged PR list -
 rewrite the entries in user-facing wording, as in past releases. Delete any
 section that has no content. The release process is documented in the wiki
 (Building and CI page).
+
+The release.yml categories use the same section titles as this template.
+Two have no section of their own: "Security" items go under Package Updates
+(or Fixes) and make the summary lead with the security sentence; "Breaking
+changes" are described in Upgrade notes.
 -->
 
 One or two sentences: what this release is about and why to upgrade.
@@ -26,12 +31,22 @@ docker pull azinchen/openconnect-client:X.YY-N
 docker pull ghcr.io/azinchen/openconnect-client:X.YY-N
 ```
 
+Multi-arch: `386`, `amd64`, `arm/v6`, `arm/v7`, `arm64`, `riscv64`. `latest` follows this release.
+
 ### ⬆️ Upgrade notes
 
 <!-- Only when action is required or behavior changes: renamed/removed
-variables, changed defaults. "No action required - ..." otherwise. -->
+variables, changed defaults, new variables that are off unless set.
+Otherwise: "No action required — no variables, defaults or behavior
+changed." -->
 
 ### ✨ Features
+
+<!-- One entry per feature, bold lead naming the feature and its variable,
+then what it does and how it fails, ending with a wiki link, e.g.:
+- **TTL / hop-limit normalization (`TTL_SET`).** What it does, defaults, failure
+  behavior. See [Gateway Mode — TTL normalization](https://github.com/azinchen/openconnect-client/wiki/Gateway-Mode#ttl-normalization). (#PR)
+-->
 
 - ... (#PR)
 
@@ -41,10 +56,13 @@ variables, changed defaults. "No action required - ..." otherwise. -->
 
 ### 📦 Package Updates
 
-<!-- openconnect / Alpine / APK pin bumps, with CVE links for security
-fixes, e.g.:
+<!-- openconnect / Alpine / s6-overlay / APK pin bumps. Security bumps link
+their CVEs or advisories and say what the package does in this image (and
+whether it is build-stage only). Plain bumps are one line, e.g.:
 - Bump openconnect 9.21 → 9.22 ([upstream changelog](https://www.infradead.org/openconnect/changelog.html)) (#PR)
-- Bump gnutls 3.8.13-r0 → 3.8.14-r0, fixing [CVE-XXXX-YYYY](https://avd.aquasec.com/nvd/cve-xxxx-yyyy) (#PR)
+- Bump Alpine Linux 3.24.2 → 3.24.3 — security release: fixes [CVE-XXXX-YYYY](https://avd.aquasec.com/nvd/cve-xxxx-yyyy) in musl ([announcement](https://alpinelinux.org/posts/...)) (#PR)
+- Bump curl 8.21.0-r0 → 8.22.0-r0 — fixes [nine CVEs](https://curl.se/docs/vuln-8.21.0.html); curl runs the health-check probe (#PR)
+- Bump s6-overlay 3.2.3.0 → 3.2.3.2 (#PR)
 -->
 
 ### 📖 Documentation
@@ -53,7 +71,10 @@ fixes, e.g.:
 
 ### 🔧 CI/CD Updates
 
-- ... (#PR)
+<!-- GitHub Actions bumps, one line per action, collapsing the Dependabot
+PRs for the same action into one entry, e.g.:
+- Bump `github/codeql-action` from 4.38.2 to 4.39.0 (#PR, #PR)
+-->
 
 ### 🧩 Component versions
 
@@ -64,6 +85,8 @@ fixes, e.g.:
 | s6-overlay | D.E.F.G |
 
 ### Contributors
+
+<!-- Add @dependabot when the release includes its PRs. -->
 
 @azinchen
 
