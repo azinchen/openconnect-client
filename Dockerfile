@@ -22,7 +22,7 @@ RUN set -eux && \
         zlib-dev=1.3.2-r1 \
         linux-headers=7.0.0-r1 \
         pkgconf=2.5.1-r0 \
-        curl=8.22.0-r0 \
+        curl=8.23.0-r0 \
         && \
     curl -fsSL "https://www.infradead.org/openconnect/download/openconnect-${OPENCONNECT_VERSION}.tar.gz" -o /tmp/openconnect.tar.gz && \
     tar -C /tmp -xf /tmp/openconnect.tar.gz && \
@@ -136,7 +136,7 @@ RUN apk --no-cache --no-progress add \
     zlib=1.3.2-r1 \
     iproute2-minimal=7.0.0-r0 \
     nftables=1.1.6-r1 \
-    curl=8.22.0-r0 \
+    curl=8.23.0-r0 \
     bind-tools=9.20.30-r0 \
     openssl=3.5.9-r0 \
     ca-certificates=20261020-r0 \
