@@ -31,7 +31,7 @@ docker pull azinchen/openconnect-client:X.YY-N
 docker pull ghcr.io/azinchen/openconnect-client:X.YY-N
 ```
 
-Multi-arch: `386`, `amd64`, `arm/v6`, `arm/v7`, `arm64`, `riscv64`. `latest` follows this release.
+Multi-arch: `386`, `amd64`, `arm/v6`, `arm/v7`, `arm64`. `latest` follows this release.
 
 ### ⬆️ Upgrade notes
 

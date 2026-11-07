@@ -39,7 +39,7 @@ Full documentation lives in the [project wiki][wiki-home].
 - 🏠 **LAN access** — `NETWORK` / `NETWORK6` add return routes and firewall holes ([details][wiki-lan])
 - 🪜 **TTL normalization** — `TTL_SET` hides the hops behind the container from traceroutes ([details][wiki-ttl])
 - 🔍 **Network diagnostics** — dump addresses, routes and the nftables ruleset ([details][wiki-diagnostics])
-- 📦 **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64, riscv64 ([details][wiki-build])
+- 📦 **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64 ([details][wiki-build])
 
 ## 🚀 Quick Start
 
@@ -272,7 +272,7 @@ autoheal-style restarter to recycle an unhealthy container.
 [dockerhub-stars]: https://img.shields.io/docker/stars/azinchen/openconnect-client?logo=docker&logoColor=white
 [dockerhub-size]: https://img.shields.io/docker/image-size/azinchen/openconnect-client/latest?logo=docker&logoColor=white
 [dockerhub-link]: https://hub.docker.com/r/azinchen/openconnect-client
-[multiarch-badge]: https://img.shields.io/badge/multi--arch-386%20%7C%20amd64%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm64%20%7C%20riscv64-blue?logo=docker&logoColor=white
+[multiarch-badge]: https://img.shields.io/badge/multi--arch-386%20%7C%20amd64%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm64-blue?logo=docker&logoColor=white
 
 <!-- Links: Wiki -->
 [wiki-home]: https://github.com/azinchen/openconnect-client/wiki

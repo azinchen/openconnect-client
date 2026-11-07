@@ -54,7 +54,7 @@ The openconnect version is pinned via the `OPENCONNECT_VERSION` ARG and bumped b
 | `maintenance-cleanup` | schedule | Prune stale GHCR/Docker Hub tags |
 | `wiki-publish` | tag push / manual | Syncs the repository's `wiki/` folder to the GitHub wiki |
 
-Platform matrix for releases: `linux/386, linux/amd64, linux/arm/v6, linux/arm/v7, linux/arm64, linux/riscv64`.
+Platform matrix for releases: `linux/386, linux/amd64, linux/arm/v6, linux/arm/v7, linux/arm64`. `linux/riscv64` (published up to 9.21-4) was dropped: Alpine builds its riscv64 packages and the official `alpine` Docker image on slower hardware, so they land hours to days after the other architectures and repeatedly blocked the multi-arch build. The Dockerfile still supports it for local builds (`docker buildx build --platform linux/riscv64 .`).
 
 ## Image tags
 
