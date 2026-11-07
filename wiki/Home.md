@@ -22,7 +22,7 @@
 - **LAN access** — `NETWORK` / `NETWORK6` add return routes and firewall holes ([[Local Network Access]])
 - **TTL normalization** — `TTL_SET` hides the hops behind the container from traceroutes ([Gateway Mode](Gateway-Mode#ttl-normalization))
 - **Network diagnostics** — dump addresses, routes and the nftables ruleset ([[Network Diagnostics]])
-- **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64, riscv64 ([[Building and CI]])
+- **Small multi-arch Alpine image** — 386, amd64, arm/v6, arm/v7, arm64 ([[Building and CI]])
 
 ---
 

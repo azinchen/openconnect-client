@@ -46,7 +46,7 @@ The tunnel is running over TCP/TLS; DTLS is the UDP fast path (and it normally *
 
 ### Which architectures are published?
 
-`386, amd64, arm/v6, arm/v7, arm64, riscv64` — see [[Building and CI]] for tags and registries.
+`386, amd64, arm/v6, arm/v7, arm64` — see [[Building and CI]] for tags and registries.
 
 ### How is this different from a generic "VPN client + iptables script" container?
 
