@@ -138,7 +138,7 @@ RUN apk --no-cache --no-progress add \
     nftables=1.1.6-r1 \
     curl=8.23.0-r0 \
     bind-tools=9.20.30-r0 \
-    openssl=3.5.9-r0 \
+    openssl=3.5.9-r1 \
     ca-certificates=20261020-r0 \
     tzdata=2026f-r0
 
