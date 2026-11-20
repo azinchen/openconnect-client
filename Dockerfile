@@ -16,7 +16,7 @@ ARG OPENCONNECT_VERSION
 RUN set -eux && \
     apk --no-cache --no-progress add \
         build-base=0.5-r4 \
-        gnutls-dev=3.8.13-r0 \
+        gnutls-dev=3.8.14-r0 \
         libxml2-dev=2.13.9-r2 \
         lz4-dev=1.10.0-r1 \
         zlib-dev=1.4-r0 \
@@ -130,7 +130,7 @@ LABEL org.opencontainers.image.title="OpenConnect VPN Client Docker container" \
       com.openconnect.documentation="https://www.infradead.org/openconnect/manual.html"
 
 RUN apk --no-cache --no-progress add \
-    gnutls=3.8.13-r0 \
+    gnutls=3.8.14-r0 \
     libxml2=2.13.9-r2 \
     lz4-libs=1.10.0-r1 \
     zlib=1.4-r0 \
