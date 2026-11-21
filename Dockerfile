@@ -17,7 +17,7 @@ RUN set -eux && \
     apk --no-cache --no-progress add \
         build-base=0.5-r4 \
         gnutls-dev=3.8.14-r0 \
-        libxml2-dev=2.13.9-r2 \
+        libxml2-dev=2.13.9-r3 \
         lz4-dev=1.10.0-r1 \
         zlib-dev=1.4-r0 \
         linux-headers=7.0.0-r1 \
@@ -131,7 +131,7 @@ LABEL org.opencontainers.image.title="OpenConnect VPN Client Docker container" \
 
 RUN apk --no-cache --no-progress add \
     gnutls=3.8.14-r0 \
-    libxml2=2.13.9-r2 \
+    libxml2=2.13.9-r3 \
     lz4-libs=1.10.0-r1 \
     zlib=1.4-r0 \
     iproute2-minimal=7.0.0-r0 \
